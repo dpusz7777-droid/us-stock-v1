@@ -1,0 +1,68 @@
+# 旧持仓迁移报告
+
+- 迁移时间：`2026-06-22T17:15:41Z`
+- 目标 schema：`1.1`
+- 转换持仓数量：2
+- 结果：校验通过并生成不含资金流水的 OPENING_POSITION 候选事件
+
+## 成功转换的字段
+
+- `portfolio_config.currency` → `account.base_currency`
+- `portfolio_config.stop_loss_pct` → `settings.stop_loss_pct`
+- `portfolio_config.target_profit_pct` → `settings.target_profit_pct`
+- 旧 `ticker` → OPENING_POSITION 的 `symbol`
+- 旧 `shares` → OPENING_POSITION 的 `shares`
+- 旧 `avg_cost` → OPENING_POSITION 的 `price`（期初平均成本）
+- 人工确认的 SOFI 和 SPCX → OPENING_POSITION
+- 无法确认现金基线 → account.cash_status=unknown
+
+## 无法转换的字段
+
+- 真实逐笔成交历史
+- 真实入金和出金日期
+- 手续费历史
+- 已实现盈亏历史
+- 分红、税费和拆股历史
+- 券商原始交易编号
+- 旧时间字段的可靠时区
+
+## 所有假设
+
+- 仅 SOFI 和 SPCX 已由用户根据盈立真实账户截图确认为当前持仓。
+- 确认持仓只能转换为 OPENING_POSITION，不代表真实逐笔成交历史。
+- OPENING_POSITION 的手续费统一为 0，且不影响现金。
+- 旧 added 字段没有可靠时区，使用迁移时间作为 effective_at，executed_at 保持 null。
+- 没有可靠初始入金记录，因此不生成 DEPOSIT，也不重建现金。
+- max_single_position_pct 在旧配置中缺失，候选文件使用 20.0%。
+
+## 警告
+
+- ECO：历史已平仓但缺少完整成交记录，暂未迁移。
+- SPY 未包含在本次人工确认名单中，未自动迁移，必须另行核实。
+- 无法恢复真实入金、买卖、分红、税费、拆股和已实现盈亏历史。
+- source=legacy_migration 表示记录来自旧快照转换，不是券商原始成交记录。
+- 未成交订单、条件单、撤销订单和当前市值快照均不写入 transactions。
+- 候选文件没有 DEPOSIT，现金和账户总值无法完整重建。
+
+## 未迁移项目
+
+- ECO：历史已平仓但缺少完整成交记录，暂未迁移。
+- 未成交订单、条件单和撤销订单：不是已成交交易，未迁移。
+- 当前市值快照：不是历史交易，未迁移。
+- 初始 DEPOSIT：缺少可靠入金记录，未生成。
+
+## 新旧账户金额对比
+
+| 项目 | 金额（USD） |
+|---|---:|
+| 旧配置 total_capital | 3500.00000 |
+| 旧 cash 快照（仅供参考，未迁移） | 2000.00000 |
+| SOFI 初始化成本 | 1032.50000 |
+| SPCX 初始化成本 | 404.00000 |
+| 合计初始化持仓成本 | 1436.50000 |
+| 候选 DEPOSIT | 未生成 |
+
+## 人工确认要求
+
+候选文件不能自动替换正式数据。由于未生成 DEPOSIT，现金和账户总值无法完整重建。
+请先补充可靠资金流水并核对持仓、时间和迁移假设，再决定后续处理。

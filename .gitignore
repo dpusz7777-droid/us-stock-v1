@@ -1,0 +1,68 @@
+# ── Python ──
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── 虚拟环境 ──
+.venv/
+venv/
+env/
+
+# ── 测试缓存 ──
+.pytest_cache/
+*.pytest_cache*
+
+# ── 项目数据文件（隐私） ──
+portfolio.json
+portfolio_migrated_candidate.json
+portfolio_migrated_candidate_old.json
+portfolio_config.json
+usmart_holdings.*
+watchlist.json
+short_watchlist.json
+portfolio_history.json
+account_config.json
+credentials.json
+secrets.json
+
+# ── 筛选结果 ──
+美股筛选结果_*.csv
+美股筛选结果_*.xlsx
+
+# ── 每日晨报 ──
+每日晨报/
+
+# ── 分析输出 ──
+分析脚本/
+数据文件/
+
+# ── 个股研究报告 ──
+个股研究/
+
+# ── 交易记录 ──
+交易记录/
+
+# ── IDE ──
+.agents/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── 系统 ──
+.DS_Store
+Thumbs.db
+
+# ── 环境变量 ──
+.env
+.env.*
+!.env.example
+
+# ── 日志 ──
+*.log
