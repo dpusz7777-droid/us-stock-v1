@@ -523,6 +523,47 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             save_report=True,
         )
 
+    def test_evening_command_routes_to_evening_briefing(self) -> None:
+        with patch.object(
+            main,
+            "show_evening_briefing",
+            return_value=True,
+        ) as show_evening:
+            self.run_main(
+                "evening",
+                "--portfolio-file",
+                "portfolio_migrated_candidate.json",
+                "--watchlist",
+                "watchlist.json",
+            )
+
+        show_evening.assert_called_once_with(
+            "portfolio_migrated_candidate.json",
+            "watchlist.json",
+            save_report=False,
+        )
+
+    def test_evening_save_command_routes_to_evening_briefing_save(self) -> None:
+        with patch.object(
+            main,
+            "show_evening_briefing",
+            return_value=True,
+        ) as show_evening:
+            self.run_main(
+                "evening",
+                "--save",
+                "--portfolio-file",
+                "portfolio_migrated_candidate.json",
+                "--watchlist",
+                "watchlist.json",
+            )
+
+        show_evening.assert_called_once_with(
+            "portfolio_migrated_candidate.json",
+            "watchlist.json",
+            save_report=True,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

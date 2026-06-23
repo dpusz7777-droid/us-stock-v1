@@ -16,11 +16,14 @@ from ai_briefing import LLMClientError
 from briefing import (
     build_ai_briefing_markdown,
     build_briefing_data,
+    build_evening_markdown,
     build_morning_markdown,
     save_ai_briefing_report,
+    save_evening_report,
     save_morning_report,
     show_ai_briefing,
     show_briefing,
+    show_evening_briefing,
     show_morning_briefing,
 )
 from market_info import NewsProviderError, NewsRow
@@ -500,6 +503,109 @@ class BriefingTests(unittest.TestCase):
             self.assertIn("只读盘前简报", text)
             self.assertFalse(reports_dir.exists())
 
+    def test_show_evening_briefing_outputs_required_sections(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+
+        class FakePriceProvider:
+            prices = {
+                "SOFI": Decimal("12.50"),
+                "NVDA": Decimal("100.00"),
+                "AAPL": Decimal("200.00"),
+            }
+
+            def get_quote(self, symbol: str) -> PriceQuote:
+                return PriceQuote(
+                    symbol=symbol,
+                    price=self.prices[symbol],
+                    previous_close=self.prices[symbol] - Decimal("1"),
+                    source="fake",
+                    price_as_of="2026-06-23T20:00:00Z",
+                )
+
+        class FakeNewsProvider:
+            def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+                return [
+                    NewsRow(
+                        symbol=symbol,
+                        title=f"{symbol} close headline",
+                        publisher="Yahoo Finance",
+                        published_at="2026-06-23T20:00:00Z",
+                        link=f"https://example.com/{symbol.lower()}",
+                    )
+                ]
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = show_evening_briefing(
+                portfolio_path,
+                watchlist_path,
+                price_provider=FakePriceProvider(),
+                news_provider=FakeNewsProvider(),
+            )
+
+        text = output.getvalue()
+        self.assertTrue(result)
+        self.assertIn("今日盘后复盘", text)
+        self.assertIn("今日账户表现", text)
+        self.assertIn("持仓表现", text)
+        self.assertIn("今日重要新闻", text)
+        self.assertIn("明日财报与事件", text)
+        self.assertIn("风险提示", text)
+        self.assertIn("明日观察计划", text)
+        self.assertIn("SOFI", text)
+        self.assertIn("NVDA close headline", text)
+        self.assertIn("只读盘后复盘：未修改文件，未连接券商下单，未自动交易", text)
+
+    def test_build_evening_markdown_contains_required_sections(self) -> None:
+        markdown = build_evening_markdown(
+            evening_result(),
+            generated_at=datetime(2026, 6, 23, 16, 30, 0),
+        )
+
+        self.assertIn("# 今日盘后复盘", markdown)
+        self.assertIn("生成时间: 2026-06-23T16:30:00", markdown)
+        self.assertIn("数据源说明", markdown)
+        self.assertIn("## 今日账户表现", markdown)
+        self.assertIn("## 持仓表现", markdown)
+        self.assertIn("## 今日重要新闻", markdown)
+        self.assertIn("## 明日财报与事件", markdown)
+        self.assertIn("## 风险提示", markdown)
+        self.assertIn("## 明日观察计划", markdown)
+
+    def test_save_evening_report_uses_evening_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+            saved_path = save_evening_report(
+                evening_result(),
+                reports_dir=reports_dir,
+                generated_at=datetime(2026, 6, 23, 16, 30, 0),
+            )
+
+            self.assertEqual(saved_path, reports_dir / "2026-06-23-evening.md")
+            self.assertTrue(saved_path.is_file())
+            self.assertIn("明日观察计划内容", saved_path.read_text(encoding="utf-8"))
+
+    def test_show_evening_briefing_save_writes_report(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = show_evening_briefing(
+                    portfolio_path,
+                    watchlist_path,
+                    price_provider=FailingPriceProvider(),
+                    news_provider=EmptyNewsProvider(),
+                    save_report=True,
+                    reports_dir=reports_dir,
+                )
+
+            self.assertTrue(result)
+            self.assertIn("已保存 Markdown 报告", output.getvalue())
+            files = list(reports_dir.glob("*-evening*.md"))
+            self.assertEqual(len(files), 1)
+
 
 class FailingPriceProvider:
     def get_quote(self, symbol: str) -> PriceQuote:
@@ -530,6 +636,17 @@ def morning_result() -> dict[str, str]:
         "earnings_today": "今日财报内容",
         "risk_warning": "风险提示内容",
         "action_items": "今日操作建议内容",
+    }
+
+
+def evening_result() -> dict[str, str]:
+    return {
+        "account_performance": "今日账户表现内容",
+        "position_performance": "持仓表现内容",
+        "important_news": "今日重要新闻内容",
+        "tomorrow_events": "明日财报与事件内容",
+        "risk_warning": "风险提示内容",
+        "tomorrow_watch_plan": "明日观察计划内容",
     }
 
 

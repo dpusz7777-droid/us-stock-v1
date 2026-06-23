@@ -18,7 +18,12 @@ import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from briefing import show_ai_briefing, show_briefing, show_morning_briefing
+from briefing import (
+    show_ai_briefing,
+    show_briefing,
+    show_evening_briefing,
+    show_morning_briefing,
+)
 from price_provider import PriceProvider, PriceProviderError, PriceQuote, YFinancePriceProvider
 from market_info import show_earnings_overview, show_news_overview
 from portfolio_service import (
@@ -467,6 +472,20 @@ def main():
     )
     p.add_argument("--save", action="store_true", help="保存盘前简报 Markdown")
 
+    # evening
+    p = sub.add_parser("evening", help="盘后复盘")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
+    p.add_argument(
+        "--watchlist",
+        default=str(ROOT / "watchlist.json"),
+        help="watchlist JSON 文件路径",
+    )
+    p.add_argument("--save", action="store_true", help="保存盘后复盘 Markdown")
+
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
     p.add_argument("--daily", action="store_true", help="每日简报")
@@ -551,6 +570,13 @@ def main():
 
     elif args.command == "morning":
         show_morning_briefing(
+            args.portfolio_file,
+            args.watchlist,
+            save_report=args.save,
+        )
+
+    elif args.command == "evening":
+        show_evening_briefing(
             args.portfolio_file,
             args.watchlist,
             save_report=args.save,
