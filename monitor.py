@@ -13,10 +13,18 @@ import json
 import sys
 import time
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from portfolio_service import PortfolioError, PortfolioState, get_portfolio_snapshot
+from price_provider import PriceProvider, PriceProviderError, PriceQuote, YFinancePriceProvider
+from portfolio_service import (
+    PortfolioError,
+    PortfolioState,
+    apply_market_prices,
+    get_portfolio_snapshot,
+    load_portfolio as load_schema_portfolio,
+)
 
 sys.stdout.reconfigure(encoding="utf-8")
 
@@ -25,6 +33,8 @@ PORTFOLIO_FILE = DATA_DIR / "portfolio.json"
 CONFIG_FILE = DATA_DIR / "portfolio_config.json"
 HISTORY_FILE = DATA_DIR / "portfolio_history.json"
 USMART_FILE = DATA_DIR / "usmart_holdings.json"
+DEFAULT_STOP_LOSS_PCT = Decimal("8")
+DEFAULT_TARGET_PROFIT_PCT = Decimal("25")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -449,6 +459,151 @@ def print_schema_positions(state: PortfolioState):
         )
 
 
+def _to_decimal_setting(value, field_name: str, default: Decimal) -> Decimal:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        print(f"  [提示] {field_name} 无效，使用默认值 {default}%。")
+        return default
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        print(f"  [提示] {field_name} 无效，使用默认值 {default}%。")
+        return default
+    if number <= 0 or number > 100:
+        print(f"  [提示] {field_name} 超出范围，使用默认值 {default}%。")
+        return default
+    return number
+
+
+def load_alert_settings(path: str | Path) -> tuple[Decimal, Decimal]:
+    """从 Schema 1.1 持仓文件读取预警阈值。"""
+
+    document = load_schema_portfolio(path)
+    settings = document.get("settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    stop_loss = _to_decimal_setting(
+        settings.get("stop_loss_pct", document.get("stop_loss_pct")),
+        "stop_loss_pct",
+        DEFAULT_STOP_LOSS_PCT,
+    )
+    target_profit = _to_decimal_setting(
+        settings.get("target_profit_pct", document.get("target_profit_pct")),
+        "target_profit_pct",
+        DEFAULT_TARGET_PROFIT_PCT,
+    )
+    return stop_loss, target_profit
+
+
+def fetch_alert_quotes(
+    symbols: list[str],
+    provider: PriceProvider | None = None,
+) -> tuple[dict[str, dict], dict[str, PriceQuote], tuple[str, ...]]:
+    """为预警逐只获取行情；单只失败不影响其他股票。"""
+
+    quote_provider = provider or YFinancePriceProvider()
+    prices: dict[str, dict] = {}
+    quotes: dict[str, PriceQuote] = {}
+    warnings: list[str] = []
+
+    for symbol in symbols:
+        try:
+            quote = quote_provider.get_quote(symbol)
+        except (PriceProviderError, Exception) as exc:
+            warnings.append(f"{symbol} 行情获取失败：{exc}")
+            continue
+        quotes[quote.symbol] = quote
+        prices[quote.symbol] = {
+            "price": quote.price,
+            "price_as_of": quote.price_as_of,
+        }
+    return prices, quotes, tuple(warnings)
+
+
+def _money_or_unknown(value) -> str:
+    return "价格未知" if value is None else f"${value:,.2f}"
+
+
+def _pct_or_unknown(value) -> str:
+    return "价格未知" if value is None else f"{value:+.2f}%"
+
+
+def print_schema_alerts(
+    state: PortfolioState,
+    stop_loss_pct: Decimal,
+    target_profit_pct: Decimal,
+    *,
+    quotes: dict[str, PriceQuote] | None = None,
+    price_warnings: tuple[str, ...] = (),
+) -> None:
+    """输出当前持仓止盈、止损和仓位占比提醒，不执行任何交易。"""
+
+    quotes = quotes or {}
+    print(f"\n{'='*72}")
+    print("  [当前持仓预警列表]")
+    print(f"  止损阈值: -{stop_loss_pct}%")
+    print(f"  止盈阈值: +{target_profit_pct}%")
+    print(f"{'='*72}")
+
+    if not state.positions:
+        print("  暂无持仓，无需预警。")
+        return
+
+    total_market_value = state.total_market_value
+    allocation_base = state.total_equity or total_market_value
+    if state.total_equity is None:
+        print("  [提示] 现金基线未知，单股占比按当前持仓总市值计算。")
+
+    print(
+        f"\n  {'代码':>8} {'现价':>12} {'市值':>14} {'未实现盈亏':>14} "
+        f"{'盈亏率':>10} {'仓位占比':>10} {'状态':>10} {'来源':>10} {'价格时间':>22}"
+    )
+    print(f"  {'-'*122}")
+
+    has_alert = False
+    for symbol in sorted(state.positions):
+        position = state.positions[symbol]
+        quote = quotes.get(symbol)
+        source = quote.source if quote else "-"
+        price_as_of = quote.price_as_of if quote else "-"
+        allocation_pct = (
+            position.market_value / allocation_base * Decimal("100")
+            if position.market_value is not None
+            and allocation_base is not None
+            and allocation_base != Decimal("0")
+            else None
+        )
+
+        status = "价格未知"
+        pnl_pct = position.unrealized_pnl_pct
+        if pnl_pct is not None:
+            if pnl_pct <= -stop_loss_pct:
+                status = "达到止损"
+                has_alert = True
+            elif pnl_pct >= target_profit_pct:
+                status = "达到止盈"
+                has_alert = True
+            else:
+                status = "正常"
+
+        print(
+            f"  {position.symbol:>8} "
+            f"{_money_or_unknown(position.last_price):>12} "
+            f"{_money_or_unknown(position.market_value):>14} "
+            f"{_money_or_unknown(position.unrealized_pnl):>14} "
+            f"{_pct_or_unknown(position.unrealized_pnl_pct):>10} "
+            f"{_pct_or_unknown(allocation_pct):>10} "
+            f"{status:>10} {source:>10} {price_as_of:>22}"
+        )
+
+    if not has_alert:
+        print("\n  当前没有达到止盈或止损条件的持仓。")
+    for warning in price_warnings:
+        print(f"  [行情提示] {warning}")
+    print("\n只读提醒：未修改文件，未连接券商，未自动交易。")
+
+
 def print_read_only_notice():
     """解释为什么旧写入操作在 Schema 1.1 第一阶段被阻止。"""
     print("\n[已阻止] Schema 1.1 第一阶段仅支持只读查看。")
@@ -464,7 +619,7 @@ def main():
     parser = argparse.ArgumentParser(description="Schema 1.1 持仓只读监控")
     parser.add_argument("--portfolio-file", default=str(PORTFOLIO_FILE), help="持仓 JSON 文件路径")
     parser.add_argument("--daily", action="store_true", help="只读概览（第一阶段与默认显示相同）")
-    parser.add_argument("--alert", action="store_true", help="价格预警（第一阶段暂不可用）")
+    parser.add_argument("--alert", action="store_true", help="价格预警（只读提醒）")
     parser.add_argument("--add", action="store_true", help="暂时禁用：添加买入")
     parser.add_argument("--sell", type=str, help="暂时禁用：卖出持仓")
     parser.add_argument("--import-usmart", action="store_true", help="暂时禁用：从uSMART导入")
@@ -483,11 +638,27 @@ def main():
         print("请使用 Schema 1.1 文件，或通过 --portfolio-file 明确指定候选文件。")
         return
 
+    if args.alert:
+        try:
+            stop_loss_pct, target_profit_pct = load_alert_settings(args.portfolio_file)
+        except PortfolioError as exc:
+            print(f"\n[错误] 预警配置无法读取：{exc}")
+            return
+
+        prices, quotes, price_warnings = fetch_alert_quotes(sorted(state.positions))
+        if prices:
+            state = apply_market_prices(state, prices)
+        print_schema_alerts(
+            state,
+            stop_loss_pct,
+            target_profit_pct,
+            quotes=quotes,
+            price_warnings=price_warnings,
+        )
+        return
+
     print_schema_summary(state)
     print_schema_positions(state)
-
-    if args.alert:
-        print("\n[提示] 第一阶段尚未接入行情，无法计算价格、止损或止盈预警。")
 
     print("\n只读模式：未访问网络，未调用 yfinance，未写入任何文件。")
 

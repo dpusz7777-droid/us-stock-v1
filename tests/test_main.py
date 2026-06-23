@@ -165,6 +165,15 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         self.assertIn("[行情提示] SOFI 行情获取失败：fake failure", output)
         self.assertNotIn("Traceback", output)
 
+    def test_monitor_alert_routes_to_monitor_script(self) -> None:
+        with patch.object(main, "run_script") as run_script:
+            self.run_main("monitor", "--alert")
+
+        run_script.assert_called_once_with(
+            "monitor.py",
+            ["--portfolio-file", str(main.DEFAULT_SCHEMA_PORTFOLIO_FILE), "--alert"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

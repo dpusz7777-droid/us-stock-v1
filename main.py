@@ -225,6 +225,11 @@ def main():
     p.add_argument("--sell", type=str, help="卖出持仓")
     p.add_argument("--import-usmart", action="store_true", help="从uSMART导入")
     p.add_argument("--init", action="store_true", help="初始化示例持仓")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
 
     args = parser.parse_args()
 
@@ -271,7 +276,7 @@ def main():
         print(f"  python main.py watchlist        观察名单")
 
     elif args.command == "monitor":
-        cmd_args = []
+        cmd_args = ["--portfolio-file", args.portfolio_file]
         if args.daily:
             cmd_args.append("--daily")
         if args.alert:

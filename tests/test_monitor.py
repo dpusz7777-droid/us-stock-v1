@@ -7,9 +7,12 @@
 from __future__ import annotations
 
 import io
+import json
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -54,6 +57,7 @@ class MonitorReadOnlyTests(unittest.TestCase):
             patch.object(monitor, "cmd_sell") as cmd_sell,
             patch.object(monitor, "cmd_import_usmart") as import_usmart,
             patch.object(monitor, "init_sample_portfolio") as init_sample,
+            patch.object(monitor, "YFinancePriceProvider") as provider_class,
             redirect_stdout(output),
         ):
             monitor.main()
@@ -66,7 +70,58 @@ class MonitorReadOnlyTests(unittest.TestCase):
         cmd_sell.assert_not_called()
         import_usmart.assert_not_called()
         init_sample.assert_not_called()
+        provider_class.assert_not_called()
         return output.getvalue()
+
+    def make_schema_file(self, prices: dict[str, str] | None = None) -> tuple[tempfile.TemporaryDirectory, Path]:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        prices = prices or {"GAIN": "10", "LOSS": "10", "FLAT": "10"}
+        transactions = []
+        for index, (symbol, price) in enumerate(prices.items(), start=1):
+            transactions.append(
+                {
+                    "transaction_id": f"txn_alert_{index:03d}",
+                    "external_id": None,
+                    "transaction_type": "OPENING_POSITION",
+                    "symbol": symbol,
+                    "shares": 10,
+                    "price": float(price),
+                    "amount": None,
+                    "fees": 0,
+                    "executed_at": None,
+                    "effective_at": "2026-06-22T17:15:41Z",
+                    "recorded_at": "2026-06-22T17:15:41Z",
+                    "source": "legacy_migration",
+                    "note": "测试期初持仓。",
+                }
+            )
+        path = Path(temp_dir.name) / "portfolio.json"
+        path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1.1",
+                    "account": {
+                        "account_id": "alert_test",
+                        "account_name": "预警测试账户",
+                        "broker": "test",
+                        "base_currency": "USD",
+                        "cash_status": "unknown",
+                        "created_at": "2026-06-22T17:00:00Z",
+                        "updated_at": "2026-06-22T17:00:00Z",
+                    },
+                    "settings": {
+                        "stop_loss_pct": 8,
+                        "target_profit_pct": 25,
+                        "max_single_position_pct": 20,
+                    },
+                    "transactions": transactions,
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        return temp_dir, path
 
     def test_candidate_displays_schema_positions_and_unknown_cash(self) -> None:
         output = self.run_monitor("--portfolio-file", str(CANDIDATE_FILE))
@@ -117,6 +172,82 @@ class MonitorReadOnlyTests(unittest.TestCase):
 
         for path, expected in self.before_contents.items():
             self.assertEqual(path.read_bytes(), expected)
+
+    def test_alert_outputs_profit_loss_and_position_allocation(self) -> None:
+        _, path = self.make_schema_file()
+
+        class FakeProvider:
+            prices = {
+                "GAIN": Decimal("13.00"),
+                "LOSS": Decimal("9.00"),
+                "FLAT": Decimal("10.50"),
+            }
+
+            def get_quote(self, symbol: str) -> monitor.PriceQuote:
+                return monitor.PriceQuote(
+                    symbol=symbol,
+                    price=self.prices[symbol],
+                    previous_close=None,
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        output = io.StringIO()
+        with (
+            patch.object(sys, "argv", ["monitor.py", "--portfolio-file", str(path), "--alert"]),
+            patch.object(monitor, "YFinancePriceProvider", return_value=FakeProvider()) as provider_class,
+            patch.object(monitor, "save_portfolio") as save_portfolio,
+            patch.object(monitor, "save_daily_snapshot") as save_snapshot,
+            redirect_stdout(output),
+        ):
+            monitor.main()
+
+        provider_class.assert_called_once()
+        save_portfolio.assert_not_called()
+        save_snapshot.assert_not_called()
+        text = output.getvalue()
+        self.assertIn("当前持仓预警列表", text)
+        self.assertIn("止损阈值: -8%", text)
+        self.assertIn("止盈阈值: +25%", text)
+        self.assertIn("GAIN", text)
+        self.assertIn("达到止盈", text)
+        self.assertIn("+30.00%", text)
+        self.assertIn("LOSS", text)
+        self.assertIn("达到止损", text)
+        self.assertIn("-10.00%", text)
+        self.assertIn("仓位占比", text)
+        self.assertIn("只读提醒：未修改文件，未连接券商，未自动交易", text)
+
+    def test_alert_keeps_output_when_one_quote_fails(self) -> None:
+        _, path = self.make_schema_file({"GAIN": "10", "LOSS": "10"})
+
+        class PartialProvider:
+            def get_quote(self, symbol: str) -> monitor.PriceQuote:
+                if symbol == "LOSS":
+                    raise monitor.PriceProviderError("fake failure")
+                return monitor.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("13.00"),
+                    previous_close=None,
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        output = io.StringIO()
+        with (
+            patch.object(sys, "argv", ["monitor.py", "--portfolio-file", str(path), "--alert"]),
+            patch.object(monitor, "YFinancePriceProvider", return_value=PartialProvider()),
+            redirect_stdout(output),
+        ):
+            monitor.main()
+
+        text = output.getvalue()
+        self.assertIn("GAIN", text)
+        self.assertIn("达到止盈", text)
+        self.assertIn("LOSS", text)
+        self.assertIn("价格未知", text)
+        self.assertIn("[行情提示] LOSS 行情获取失败：fake failure", text)
+        self.assertNotIn("Traceback", text)
 
 
 if __name__ == "__main__":
