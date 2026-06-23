@@ -99,6 +99,23 @@ def _iso_utc_from_timestamp(value: Any) -> str | None:
     )
 
 
+def _iso_utc_from_datetime_like(value: Any) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "to_pydatetime"):
+        value = value.to_pydatetime()
+    if not isinstance(value, datetime):
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (
+        value.astimezone(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
 class PriceProvider:
     """行情提供器接口基类。"""
 
@@ -213,18 +230,7 @@ class YFinancePriceProvider(PriceProvider):
             .replace("+00:00", "Z")
         )
 
-    def get_quote(self, symbol: str) -> PriceQuote:
-        normalized = normalize_symbol(symbol)
-        ticker_factory = self._get_ticker_factory()
-        try:
-            info = ticker_factory(normalized).info
-        except Exception as exc:
-            raise PriceNotFoundError(
-                f"price not found for symbol: {normalized}"
-            ) from exc
-        if not isinstance(info, Mapping):
-            raise PriceNotFoundError(f"price not found for symbol: {normalized}")
-
+    def _quote_from_info(self, symbol: str, info: Mapping[str, Any]) -> PriceQuote:
         price_value = (
             info.get("currentPrice")
             or info.get("regularMarketPrice")
@@ -234,14 +240,96 @@ class YFinancePriceProvider(PriceProvider):
         price_as_of = _iso_utc_from_timestamp(info.get("regularMarketTime"))
 
         return PriceQuote(
-            symbol=normalized,
-            price=_to_decimal_price(price_value, normalized),
-            previous_close=_to_optional_decimal_price(
-                previous_close_value, normalized
-            ),
+            symbol=symbol,
+            price=_to_decimal_price(price_value, symbol),
+            previous_close=_to_optional_decimal_price(previous_close_value, symbol),
             source=self.SOURCE,
             price_as_of=price_as_of or self._now_iso(),
         )
+
+    def _quote_from_fast_info(self, symbol: str, fast_info: Any) -> PriceQuote:
+        price_value = (
+            fast_info.get("lastPrice")
+            or fast_info.get("last_price")
+            or fast_info.get("regularMarketPrice")
+            or fast_info.get("previousClose")
+            or fast_info.get("previous_close")
+        )
+        previous_close_value = (
+            fast_info.get("previousClose")
+            or fast_info.get("previous_close")
+            or fast_info.get("regular_market_previous_close")
+        )
+        return PriceQuote(
+            symbol=symbol,
+            price=_to_decimal_price(price_value, symbol),
+            previous_close=_to_optional_decimal_price(previous_close_value, symbol),
+            source=self.SOURCE,
+            price_as_of=self._now_iso(),
+        )
+
+    def _quote_from_history(self, symbol: str, ticker: Any) -> PriceQuote:
+        history = ticker.history(period="5d", interval="1d")
+        if getattr(history, "empty", True):
+            raise PriceNotFoundError(f"price not found for symbol: {symbol}")
+
+        closes = history["Close"].dropna()
+        if len(closes) == 0:
+            raise PriceNotFoundError(f"price not found for symbol: {symbol}")
+
+        price_value = closes.iloc[-1]
+        previous_close_value = closes.iloc[-2] if len(closes) >= 2 else None
+        price_as_of = _iso_utc_from_datetime_like(closes.index[-1])
+        return PriceQuote(
+            symbol=symbol,
+            price=_to_decimal_price(price_value, symbol),
+            previous_close=_to_optional_decimal_price(previous_close_value, symbol),
+            source=self.SOURCE,
+            price_as_of=price_as_of or self._now_iso(),
+        )
+
+    def get_quote(self, symbol: str) -> PriceQuote:
+        normalized = normalize_symbol(symbol)
+        ticker_factory = self._get_ticker_factory()
+        try:
+            ticker = ticker_factory(normalized)
+        except Exception as exc:
+            raise PriceNotFoundError(
+                f"price not found for symbol: {normalized}"
+            ) from exc
+
+        last_error: Exception | None = None
+        try:
+            info = ticker.info
+            if isinstance(info, Mapping):
+                return self._quote_from_info(normalized, info)
+            last_error = PriceNotFoundError(
+                f"price not found for symbol: {normalized}"
+            )
+        except InvalidPriceError as exc:
+            last_error = exc
+        except Exception as exc:
+            last_error = exc
+
+        try:
+            return self._quote_from_fast_info(normalized, ticker.fast_info)
+        except InvalidPriceError as exc:
+            if last_error is None:
+                last_error = exc
+        except Exception as exc:
+            if not isinstance(last_error, InvalidPriceError):
+                last_error = exc
+
+        try:
+            return self._quote_from_history(normalized, ticker)
+        except InvalidPriceError:
+            raise
+        except Exception as exc:
+            if isinstance(last_error, InvalidPriceError):
+                raise last_error
+            raise PriceNotFoundError(
+                f"price not found for symbol: {normalized}"
+            ) from exc
 
     def get_quotes(self, symbols: Iterable[str]) -> dict[str, PriceQuote]:
         result: dict[str, PriceQuote] = {}
