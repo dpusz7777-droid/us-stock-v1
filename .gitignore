@@ -20,7 +20,9 @@ env/
 # ── 项目数据文件（隐私） ──
 portfolio.json
 portfolio_migrated_candidate.json
+portfolio_migrated_candidate.backup-*.json
 portfolio_migrated_candidate_old.json
+position-information-*.xlsx
 portfolio_config.json
 usmart_holdings.*
 watchlist.json

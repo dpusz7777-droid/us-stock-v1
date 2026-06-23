@@ -33,6 +33,9 @@ from portfolio_service import (
     get_portfolio_snapshot,
     load_portfolio,
 )
+from usmart_sync import DEFAULT_CASH as DEFAULT_USMART_CASH
+from usmart_sync import DEFAULT_EXCEL_FILE as DEFAULT_USMART_EXCEL_FILE
+from usmart_sync import sync_usmart_excel, print_sync_summary
 
 ROOT = Path(__file__).parent
 DEFAULT_SCHEMA_PORTFOLIO_FILE = ROOT / "portfolio_migrated_candidate.json"
@@ -486,6 +489,30 @@ def main():
     )
     p.add_argument("--save", action="store_true", help="保存盘后复盘 Markdown")
 
+    # sync-usmart
+    p = sub.add_parser("sync-usmart", help="从 uSMART Excel 导入本地持仓")
+    p.add_argument("excel_path", nargs="?", help="uSMART 持仓 Excel 文件路径")
+    p.add_argument(
+        "--excel",
+        help="uSMART 持仓 Excel 文件路径",
+    )
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
+    p.add_argument(
+        "--cash",
+        default=str(DEFAULT_USMART_CASH),
+        help="可用现金",
+    )
+    p.add_argument("--buying-power", help="购买力；不填则保留现有值或使用现金")
+    p.add_argument(
+        "--no-legacy-sync",
+        action="store_true",
+        help="不同步更新旧版 portfolio.json",
+    )
+
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
     p.add_argument("--daily", action="store_true", help="每日简报")
@@ -581,6 +608,26 @@ def main():
             args.watchlist,
             save_report=args.save,
         )
+
+    elif args.command == "sync-usmart":
+        try:
+            cash = Decimal(str(args.cash))
+            buying_power = (
+                Decimal(str(args.buying_power))
+                if args.buying_power is not None
+                else None
+            )
+            positions, backup_path = sync_usmart_excel(
+                args.excel or args.excel_path or DEFAULT_USMART_EXCEL_FILE,
+                args.portfolio_file,
+                cash=cash,
+                buying_power=buying_power,
+                legacy_portfolio_path=None if args.no_legacy_sync else ROOT / "portfolio.json",
+            )
+        except Exception as exc:
+            print(f"\n[错误] uSMART 导入失败：{exc}")
+        else:
+            print_sync_summary(positions, backup_path, cash)
 
     elif args.command == "monitor":
         cmd_args = ["--portfolio-file", args.portfolio_file]

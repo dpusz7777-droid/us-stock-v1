@@ -564,6 +564,57 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             save_report=True,
         )
 
+    def test_sync_usmart_command_imports_excel_and_prints_summary(self) -> None:
+        class FakePosition:
+            symbol = "NVDA"
+            shares = Decimal("1")
+            avg_cost = Decimal("202.15")
+
+        with patch.object(
+            main,
+            "sync_usmart_excel",
+            return_value=([FakePosition()], Path("backup.json")),
+        ) as sync_usmart:
+            output = self.run_main(
+                "sync-usmart",
+                "--excel",
+                "position.xlsx",
+                "--portfolio-file",
+                "portfolio_migrated_candidate.json",
+                "--cash",
+                "2688.96",
+                "--buying-power",
+                "7585.18",
+            )
+
+        sync_usmart.assert_called_once_with(
+            "position.xlsx",
+            "portfolio_migrated_candidate.json",
+            cash=Decimal("2688.96"),
+            buying_power=Decimal("7585.18"),
+            legacy_portfolio_path=main.ROOT / "portfolio.json",
+        )
+        self.assertIn("uSMART 持仓导入完成", output)
+        self.assertIn("NVDA", output)
+        self.assertIn("$2,688.96", output)
+
+    def test_sync_usmart_no_legacy_sync_skips_legacy_file(self) -> None:
+        with patch.object(
+            main,
+            "sync_usmart_excel",
+            return_value=([], Path("backup.json")),
+        ) as sync_usmart:
+            self.run_main(
+                "sync-usmart",
+                "--excel",
+                "position.xlsx",
+                "--portfolio-file",
+                "portfolio_migrated_candidate.json",
+                "--no-legacy-sync",
+            )
+
+        self.assertIsNone(sync_usmart.call_args.kwargs["legacy_portfolio_path"])
+
 
 if __name__ == "__main__":
     unittest.main()
