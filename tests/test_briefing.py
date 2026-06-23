@@ -11,7 +11,8 @@ from contextlib import redirect_stdout
 from decimal import Decimal
 from pathlib import Path
 
-from briefing import show_briefing
+from ai_briefing import LLMClientError
+from briefing import build_briefing_data, show_ai_briefing, show_briefing
 from market_info import NewsProviderError, NewsRow
 from price_provider import PriceProviderError, PriceQuote
 
@@ -165,6 +166,121 @@ class BriefingTests(unittest.TestCase):
         self.assertIn("新闻获取失败", text)
         self.assertIn("只读简报", text)
         self.assertNotIn("Traceback", text)
+
+    def test_build_briefing_data_returns_structured_ai_input(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+
+        class FakePriceProvider:
+            prices = {
+                "SOFI": Decimal("12.50"),
+                "NVDA": Decimal("100.00"),
+                "AAPL": Decimal("200.00"),
+            }
+
+            def get_quote(self, symbol: str) -> PriceQuote:
+                return PriceQuote(
+                    symbol=symbol,
+                    price=self.prices[symbol],
+                    previous_close=self.prices[symbol] - Decimal("1"),
+                    source="fake",
+                    price_as_of="2026-06-23T12:30:00Z",
+                )
+
+        class FakeNewsProvider:
+            def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+                return [
+                    NewsRow(
+                        symbol=symbol,
+                        title=f"{symbol} headline",
+                        publisher="Yahoo Finance",
+                        published_at="2026-06-23T12:30:00Z",
+                        link=f"https://example.com/{symbol.lower()}",
+                    )
+                ]
+
+        data = build_briefing_data(
+            portfolio_path,
+            watchlist_path,
+            price_provider=FakePriceProvider(),
+            news_provider=FakeNewsProvider(),
+        )
+
+        self.assertEqual(data["account"]["total_equity"], "125.00")
+        self.assertEqual(data["positions"][0]["symbol"], "SOFI")
+        self.assertIn("NVDA", data["watchlist"])
+        self.assertTrue(data["news"])
+        self.assertTrue(data["earnings"])
+        self.assertTrue(data["screener"])
+        self.assertTrue(data["read_only"])
+        self.assertFalse(data["auto_trade"])
+
+    def test_show_ai_briefing_prints_json_fields_using_briefing_format(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+
+        class FakeLLMClient:
+            def generate_json(self, prompt: str) -> dict[str, str]:
+                return {
+                    "account_summary": "账户摘要内容",
+                    "portfolio_analysis": "持仓分析内容",
+                    "watchlist_analysis": "观察池分析内容",
+                    "risk_warning": "风险提示内容",
+                    "action_items": "今日操作建议内容",
+                }
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = show_ai_briefing(
+                portfolio_path,
+                watchlist_path,
+                price_provider=FailingPriceProvider(),
+                news_provider=EmptyNewsProvider(),
+                llm_client=FakeLLMClient(),
+            )
+
+        text = output.getvalue()
+        self.assertTrue(result)
+        self.assertIn("AI 每日简报", text)
+        self.assertIn("[账户摘要]", text)
+        self.assertIn("账户摘要内容", text)
+        self.assertIn("[持仓分析]", text)
+        self.assertIn("[观察池分析]", text)
+        self.assertIn("[风险提示]", text)
+        self.assertIn("[今日操作建议]", text)
+        self.assertIn("只读 AI 简报：未修改文件，未连接券商，未自动交易", text)
+
+    def test_show_ai_briefing_handles_llm_failure_without_crashing(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+
+        class FailingLLMClient:
+            def generate_json(self, prompt: str) -> dict[str, str]:
+                raise LLMClientError("fake llm failure")
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = show_ai_briefing(
+                portfolio_path,
+                watchlist_path,
+                price_provider=FailingPriceProvider(),
+                news_provider=EmptyNewsProvider(),
+                llm_client=FailingLLMClient(),
+            )
+
+        text = output.getvalue()
+        self.assertFalse(result)
+        self.assertIn("AI 简报生成失败", text)
+        self.assertIn("fake llm failure", text)
+        self.assertIn("只读 AI 简报", text)
+        self.assertNotIn("Traceback", text)
+
+
+class FailingPriceProvider:
+    def get_quote(self, symbol: str) -> PriceQuote:
+        raise PriceProviderError("fake price failure")
+
+
+class EmptyNewsProvider:
+    def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+        return []
 
 
 if __name__ == "__main__":
