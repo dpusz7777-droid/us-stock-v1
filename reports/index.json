@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "reports": [
+    {
+      "date": "2026-06-23",
+      "type": "evening",
+      "file_path": "reports/2026-06-23-evening.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-06-23",
+      "type": "morning",
+      "file_path": "reports/2026-06-23-morning-234123.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-06-23",
+      "type": "morning",
+      "file_path": "reports/2026-06-23-morning.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-06-24",
+      "type": "sync",
+      "file_path": "reports/2026-06-24-sync-003022.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-06-23",
+      "type": "sync",
+      "file_path": "reports/portfolio_migration_report.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-06-23",
+      "type": "sync",
+      "file_path": "reports/portfolio_migration_report_old.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    }
+  ]
+}

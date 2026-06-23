@@ -15,6 +15,8 @@
 import argparse
 import subprocess
 import sys
+import json
+import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -35,7 +37,8 @@ from portfolio_service import (
 )
 from usmart_sync import DEFAULT_CASH as DEFAULT_USMART_CASH
 from usmart_sync import DEFAULT_EXCEL_FILE as DEFAULT_USMART_EXCEL_FILE
-from usmart_sync import sync_usmart_excel, print_sync_summary
+from usmart_sync import parse_usmart_positions, sync_usmart_excel, print_sync_summary
+from report_index import recent_reports
 
 ROOT = Path(__file__).parent
 DEFAULT_SCHEMA_PORTFOLIO_FILE = ROOT / "portfolio_migrated_candidate.json"
@@ -368,14 +371,167 @@ def show_daily_report(
     return True
 
 
+def show_product_dashboard(
+    path: str | Path = DEFAULT_SCHEMA_PORTFOLIO_FILE,
+    *,
+    provider: PriceProvider | None = None,
+) -> bool:
+    """输出本地产品化 dashboard；只读、不交易。"""
+
+    try:
+        state = get_portfolio_snapshot(path)
+    except PortfolioError as exc:
+        print(f"\n[错误] Dashboard 无法读取持仓：{exc}")
+        return False
+
+    price_warnings: tuple[str, ...] = ()
+    if state.positions:
+        prices, _, price_warnings = fetch_portfolio_quotes(
+            sorted(state.positions),
+            provider=provider,
+        )
+        if prices:
+            state = apply_market_prices(state, prices)
+
+    print("\n=== 本地投资助手 Dashboard ===")
+    print("\n[最新持仓]")
+    if not state.positions:
+        print("暂无持仓")
+    else:
+        for symbol in sorted(state.positions):
+            position = state.positions[symbol]
+            print(
+                f"- {symbol}: {position.shares} 股，成本 ${position.avg_cost:,.2f}，"
+                f"现价 {_money_or_unknown(position.last_price)}"
+            )
+
+    print("\n[最新 Cash]")
+    print(f"现金: {_money_or_unknown(state.cash)}")
+    print(f"购买力: {_money_or_unknown(state.buying_power)}")
+
+    print("\n[今日盈亏]")
+    print(f"未实现盈亏: {_money_or_unknown(state.total_unrealized_pnl)}")
+    if price_warnings:
+        for warning in price_warnings:
+            print(f"[行情提示] {warning}")
+
+    print("\n[最近3份 Reports]")
+    reports = recent_reports(3)
+    if not reports:
+        print("暂无报告索引。")
+    else:
+        for item in reports:
+            print(
+                f"- {item.get('date', '未知日期')} | "
+                f"{item.get('type', 'report')} | {item.get('file_path', '')}"
+            )
+
+    print("\n只读 Dashboard：未连接券商，未自动交易，未下单。")
+    return True
+
+
+def _check_excel_latest(excel_path: str | Path) -> tuple[bool, str]:
+    path = Path(excel_path)
+    if not path.is_file():
+        return False, f"Excel 不存在：{path}"
+    age_days = (time.time() - path.stat().st_mtime) / 86400
+    if age_days > 7:
+        return False, f"Excel 可能不是最新文件：{path.name}"
+    return True, f"Excel 存在：{path.name}"
+
+
+def _check_portfolio_synced(
+    portfolio_path: str | Path,
+    excel_path: str | Path,
+) -> tuple[bool, str]:
+    try:
+        state = get_portfolio_snapshot(portfolio_path)
+        excel_positions = parse_usmart_positions(excel_path)
+    except Exception as exc:
+        return False, f"持仓同步检查失败：{exc}"
+    excel_map = {position.symbol: position for position in excel_positions}
+    if set(state.positions) != set(excel_map):
+        return False, "portfolio 与 Excel 股票列表不一致。"
+    for symbol, position in state.positions.items():
+        excel_position = excel_map[symbol]
+        if position.shares != excel_position.shares or position.avg_cost != excel_position.avg_cost:
+            return False, f"{symbol} 的股数或成本与 Excel 不一致。"
+    return True, "portfolio 已与 Excel 持仓同步。"
+
+
+def _check_json_valid(portfolio_path: str | Path) -> tuple[bool, str]:
+    try:
+        get_portfolio_snapshot(portfolio_path)
+        json.loads(Path(portfolio_path).read_text(encoding="utf-8"))
+    except Exception as exc:
+        return False, f"JSON 损坏或 Schema 无效：{exc}"
+    return True, "portfolio JSON 有效。"
+
+
+def _check_tests_pass() -> tuple[bool, str]:
+    result = subprocess.run(
+        [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        return True, "测试通过。"
+    tail = "\n".join((result.stderr or result.stdout).splitlines()[-8:])
+    return False, f"测试失败：\n{tail}"
+
+
+def show_doctor(
+    portfolio_path: str | Path = DEFAULT_SCHEMA_PORTFOLIO_FILE,
+    excel_path: str | Path = DEFAULT_USMART_EXCEL_FILE,
+    *,
+    run_tests: bool = True,
+) -> bool:
+    """系统健康检查；只读、不交易。"""
+
+    checks = [
+        ("Excel 是否最新", _check_excel_latest(excel_path)),
+        ("portfolio 是否同步", _check_portfolio_synced(portfolio_path, excel_path)),
+        ("JSON 是否损坏", _check_json_valid(portfolio_path)),
+    ]
+    if run_tests:
+        checks.append(("tests 是否通过", _check_tests_pass()))
+
+    print("\n=== System Doctor ===")
+    all_ok = True
+    for title, (ok, message) in checks:
+        all_ok = all_ok and ok
+        status = "OK" if ok else "FAIL"
+        print(f"[{status}] {title}: {message}")
+    print("\n只读健康检查：未连接券商，未自动交易，未下单。")
+    return all_ok
+
+
 def main():
     parser = argparse.ArgumentParser(description="📊 美股研究系统 v1.0")
     sub = parser.add_subparsers(dest="command")
 
     # dashboard
-    p = sub.add_parser("dashboard", help="每日看盘")
-    p.add_argument("--quick", action="store_true", help="快速模式")
-    p.add_argument("--sector", action="store_true", help="板块表现")
+    p = sub.add_parser("dashboard", help="本地产品 Dashboard")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
+
+    # doctor
+    p = sub.add_parser("doctor", help="系统健康检查")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
+    p.add_argument(
+        "--excel",
+        default=str(DEFAULT_USMART_EXCEL_FILE),
+        help="uSMART 持仓 Excel 文件路径",
+    )
+    p.add_argument("--skip-tests", action="store_true", help="跳过 unittest 检查")
 
     # analyze
     p = sub.add_parser("analyze", help="分析个股")
@@ -530,12 +686,14 @@ def main():
     args = parser.parse_args()
 
     if args.command == "dashboard":
-        cmd_args = []
-        if args.quick:
-            cmd_args.append("--quick")
-        if args.sector:
-            cmd_args.append("--sector")
-        run_script("market_dashboard.py", cmd_args)
+        show_product_dashboard(args.portfolio_file)
+
+    elif args.command == "doctor":
+        show_doctor(
+            args.portfolio_file,
+            args.excel,
+            run_tests=not args.skip_tests,
+        )
 
     elif args.command == "analyze":
         run_script("stock_analyzer.py", args.tickers + (["-v"] if args.verbose else []))
@@ -617,17 +775,18 @@ def main():
                 if args.buying_power is not None
                 else None
             )
-            positions, backup_path = sync_usmart_excel(
+            positions, backup_path, report_path = sync_usmart_excel(
                 args.excel or args.excel_path or DEFAULT_USMART_EXCEL_FILE,
                 args.portfolio_file,
                 cash=cash,
                 buying_power=buying_power,
                 legacy_portfolio_path=None if args.no_legacy_sync else ROOT / "portfolio.json",
+                reports_dir=ROOT / "reports",
             )
         except Exception as exc:
             print(f"\n[错误] uSMART 导入失败：{exc}")
         else:
-            print_sync_summary(positions, backup_path, cash)
+            print_sync_summary(positions, backup_path, cash, report_path)
 
     elif args.command == "monitor":
         cmd_args = ["--portfolio-file", args.portfolio_file]

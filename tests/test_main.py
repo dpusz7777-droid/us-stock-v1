@@ -219,6 +219,80 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             ["--portfolio-file", str(main.DEFAULT_SCHEMA_PORTFOLIO_FILE), "--alert"],
         )
 
+    def test_dashboard_outputs_local_portfolio_and_recent_reports(self) -> None:
+        data = schema_document()
+        data["account"]["cash_status"] = "known"
+        data["account"]["cash"] = 100
+        data["account"]["buying_power"] = 80
+        _, path = self.make_portfolio_file_from_document(data)
+
+        class FakeProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                return main.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("12.50"),
+                    previous_close=Decimal("12.00"),
+                    source="fake",
+                    price_as_of="2026-06-24T12:00:00Z",
+                )
+
+        with (
+            patch.object(main, "YFinancePriceProvider", return_value=FakeProvider()),
+            patch.object(
+                main,
+                "recent_reports",
+                return_value=[
+                    {
+                        "date": "2026-06-24",
+                        "type": "sync",
+                        "file_path": "reports/2026-06-24-sync.md",
+                    }
+                ],
+            ),
+        ):
+            output = self.run_main("dashboard", "--portfolio-file", str(path))
+
+        self.assertIn("本地投资助手 Dashboard", output)
+        self.assertIn("最新持仓", output)
+        self.assertIn("SOFI", output)
+        self.assertIn("现金: $100.00", output)
+        self.assertIn("今日盈亏", output)
+        self.assertIn("reports/2026-06-24-sync.md", output)
+        self.assertIn("未连接券商，未自动交易，未下单", output)
+
+    def test_doctor_outputs_health_checks_without_network(self) -> None:
+        with (
+            patch.object(main, "_check_excel_latest", return_value=(True, "excel ok")),
+            patch.object(main, "_check_portfolio_synced", return_value=(True, "sync ok")),
+            patch.object(main, "_check_json_valid", return_value=(True, "json ok")),
+            patch.object(main, "_check_tests_pass", return_value=(True, "tests ok")),
+        ):
+            output = self.run_main(
+                "doctor",
+                "--portfolio-file",
+                "portfolio_migrated_candidate.json",
+                "--excel",
+                "position-information-20260623.xlsx",
+            )
+
+        self.assertIn("System Doctor", output)
+        self.assertIn("[OK] Excel 是否最新: excel ok", output)
+        self.assertIn("[OK] portfolio 是否同步: sync ok", output)
+        self.assertIn("[OK] JSON 是否损坏: json ok", output)
+        self.assertIn("[OK] tests 是否通过: tests ok", output)
+
+    def test_doctor_skip_tests_does_not_run_unittest(self) -> None:
+        with (
+            patch.object(main, "_check_excel_latest", return_value=(True, "excel ok")),
+            patch.object(main, "_check_portfolio_synced", return_value=(True, "sync ok")),
+            patch.object(main, "_check_json_valid", return_value=(True, "json ok")),
+            patch.object(main, "_check_tests_pass") as check_tests,
+        ):
+            output = self.run_main("doctor", "--skip-tests")
+
+        check_tests.assert_not_called()
+        self.assertNotIn("tests 是否通过", output)
+
     def test_daily_report_outputs_summary_positions_alerts_and_focus_items(self) -> None:
         _, path = self.make_portfolio_file()
 
@@ -573,7 +647,7 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         with patch.object(
             main,
             "sync_usmart_excel",
-            return_value=([FakePosition()], Path("backup.json")),
+            return_value=([FakePosition()], Path("backup.json"), Path("sync.md")),
         ) as sync_usmart:
             output = self.run_main(
                 "sync-usmart",
@@ -593,16 +667,18 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             cash=Decimal("2688.96"),
             buying_power=Decimal("7585.18"),
             legacy_portfolio_path=main.ROOT / "portfolio.json",
+            reports_dir=main.ROOT / "reports",
         )
         self.assertIn("uSMART 持仓导入完成", output)
         self.assertIn("NVDA", output)
         self.assertIn("$2,688.96", output)
+        self.assertIn("同步报告", output)
 
     def test_sync_usmart_no_legacy_sync_skips_legacy_file(self) -> None:
         with patch.object(
             main,
             "sync_usmart_excel",
-            return_value=([], Path("backup.json")),
+            return_value=([], Path("backup.json"), Path("sync.md")),
         ) as sync_usmart:
             self.run_main(
                 "sync-usmart",

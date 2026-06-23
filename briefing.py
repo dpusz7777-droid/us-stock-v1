@@ -34,6 +34,7 @@ from portfolio_service import (
     get_portfolio_snapshot,
 )
 from price_provider import PriceProvider, PriceProviderError, PriceQuote, YFinancePriceProvider
+from report_index import record_report
 from screener import ScreenerRow, screen_stocks
 
 
@@ -557,6 +558,7 @@ def show_morning_briefing(
     print_morning_briefing(result)
     if save_report:
         report_path = save_morning_report(result, reports_dir=reports_dir)
+        record_report(report_path, "morning", portfolio_path=portfolio_path)
         print(f"\n已保存 Markdown 报告: {report_path}")
     return True
 
@@ -757,6 +759,7 @@ def show_evening_briefing(
     print_evening_briefing(result)
     if save_report:
         report_path = save_evening_report(result, reports_dir=reports_dir)
+        record_report(report_path, "evening", portfolio_path=portfolio_path)
         print(f"\n已保存 Markdown 报告: {report_path}")
     return True
 

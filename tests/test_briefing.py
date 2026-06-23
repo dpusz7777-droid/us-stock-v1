@@ -474,6 +474,8 @@ class BriefingTests(unittest.TestCase):
             self.assertIn("已保存 Markdown 报告", output.getvalue())
             files = list(reports_dir.glob("*-morning*.md"))
             self.assertEqual(len(files), 1)
+            index = json.loads((reports_dir / "index.json").read_text(encoding="utf-8"))
+            self.assertEqual(index["reports"][0]["type"], "morning")
 
     def test_show_morning_briefing_handles_llm_failure_without_writing_report(self) -> None:
         _, portfolio_path, watchlist_path = self.make_files()
@@ -605,6 +607,8 @@ class BriefingTests(unittest.TestCase):
             self.assertIn("已保存 Markdown 报告", output.getvalue())
             files = list(reports_dir.glob("*-evening*.md"))
             self.assertEqual(len(files), 1)
+            index = json.loads((reports_dir / "index.json").read_text(encoding="utf-8"))
+            self.assertEqual(index["reports"][0]["type"], "evening")
 
 
 class FailingPriceProvider:

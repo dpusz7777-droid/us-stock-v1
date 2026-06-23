@@ -19,6 +19,7 @@ from typing import Any
 from zipfile import BadZipFile, ZipFile
 
 from portfolio_service import PortfolioError, get_portfolio_snapshot, load_portfolio
+from report_index import DEFAULT_REPORTS_DIR, record_report
 
 
 DEFAULT_EXCEL_FILE = Path(__file__).parent / "position-information-20260623.xlsx"
@@ -316,7 +317,8 @@ def sync_usmart_excel(
     cash: Decimal = DEFAULT_CASH,
     buying_power: Decimal | None = None,
     legacy_portfolio_path: str | Path | None = DEFAULT_LEGACY_PORTFOLIO_FILE,
-) -> tuple[list[USmartPosition], Path]:
+    reports_dir: str | Path = DEFAULT_REPORTS_DIR,
+) -> tuple[list[USmartPosition], Path, Path]:
     """导入 uSMART Excel，返回持仓与备份路径。"""
 
     target = Path(portfolio_path)
@@ -346,7 +348,14 @@ def sync_usmart_excel(
             cash=cash,
             imported_at=datetime.now(timezone.utc),
         )
-    return positions, backup_path
+    report_path = save_sync_report(
+        positions,
+        cash=cash,
+        backup_path=backup_path,
+        reports_dir=reports_dir,
+        portfolio_path=target,
+    )
+    return positions, backup_path, report_path
 
 
 def write_legacy_portfolio_snapshot(
@@ -378,7 +387,90 @@ def write_legacy_portfolio_snapshot(
     )
 
 
-def print_sync_summary(positions: list[USmartPosition], backup_path: Path, cash: Decimal) -> None:
+def _next_sync_report_path(
+    reports_dir: str | Path,
+    generated_at: datetime,
+) -> Path:
+    report_dir = Path(reports_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    date_text = generated_at.strftime("%Y-%m-%d")
+    base_path = report_dir / f"{date_text}-sync.md"
+    if not base_path.exists():
+        return base_path
+    timestamp = generated_at.strftime("%H%M%S")
+    candidate = report_dir / f"{date_text}-sync-{timestamp}.md"
+    counter = 2
+    while candidate.exists():
+        candidate = report_dir / f"{date_text}-sync-{timestamp}-{counter}.md"
+        counter += 1
+    return candidate
+
+
+def build_sync_markdown(
+    positions: list[USmartPosition],
+    *,
+    cash: Decimal,
+    backup_path: str | Path,
+    generated_at: datetime | None = None,
+) -> str:
+    timestamp = (generated_at or datetime.now().astimezone()).replace(microsecond=0)
+    lines = [
+        "# uSMART 持仓同步报告",
+        "",
+        f"生成时间: {timestamp.isoformat()}",
+        "",
+        "数据源说明: 本报告由本地 uSMART Excel 导入生成，只更新本地持仓数据文件；"
+        "未连接券商下单，未自动交易。",
+        "",
+        f"导入前备份: {Path(backup_path).as_posix()}",
+        f"现金: ${cash:,.2f}",
+        "",
+        "## 持仓",
+        "",
+    ]
+    for position in sorted(positions, key=lambda item: item.symbol):
+        lines.append(
+            f"- {position.symbol}: {position.shares} 股，平均成本 ${position.avg_cost:,.2f}"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def save_sync_report(
+    positions: list[USmartPosition],
+    *,
+    cash: Decimal,
+    backup_path: str | Path,
+    reports_dir: str | Path = DEFAULT_REPORTS_DIR,
+    portfolio_path: str | Path = DEFAULT_SCHEMA_PORTFOLIO_FILE,
+    generated_at: datetime | None = None,
+) -> Path:
+    timestamp = generated_at or datetime.now().astimezone()
+    report_path = _next_sync_report_path(reports_dir, timestamp)
+    report_path.write_text(
+        build_sync_markdown(
+            positions,
+            cash=cash,
+            backup_path=backup_path,
+            generated_at=timestamp,
+        ),
+        encoding="utf-8",
+    )
+    record_report(
+        report_path,
+        "sync",
+        portfolio_path=portfolio_path,
+        generated_at=timestamp,
+    )
+    return report_path
+
+
+def print_sync_summary(
+    positions: list[USmartPosition],
+    backup_path: Path,
+    cash: Decimal,
+    report_path: Path | None = None,
+) -> None:
     print("\n=== uSMART 持仓导入完成 ===")
     print(f"导入前备份: {backup_path}")
     print(f"现金: ${cash:,.2f}")
@@ -389,6 +481,8 @@ def print_sync_summary(positions: list[USmartPosition], backup_path: Path, cash:
             f"平均成本 ${position.avg_cost:,.2f}"
         )
     print("\n只更新本地持仓数据文件；未连接券商，未自动交易，未下单。")
+    if report_path is not None:
+        print(f"同步报告: {report_path}")
 
 
 def main() -> None:
@@ -416,7 +510,7 @@ def main() -> None:
         else None
     )
     try:
-        positions, backup_path = sync_usmart_excel(
+        positions, backup_path, report_path = sync_usmart_excel(
             args.excel or args.excel_path or DEFAULT_EXCEL_FILE,
             args.portfolio_file,
             cash=cash,
@@ -426,7 +520,7 @@ def main() -> None:
     except USmartSyncError as exc:
         print(f"\n[错误] uSMART 导入失败：{exc}")
         raise SystemExit(1) from exc
-    print_sync_summary(positions, backup_path, cash)
+    print_sync_summary(positions, backup_path, cash, report_path)
 
 
 if __name__ == "__main__":

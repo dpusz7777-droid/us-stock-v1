@@ -17,7 +17,9 @@ from usmart_sync import (
     USmartSyncError,
     backup_file,
     build_schema_document,
+    build_sync_markdown,
     parse_usmart_positions,
+    save_sync_report,
     sync_usmart_excel,
 )
 
@@ -210,28 +212,69 @@ class USmartSyncTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            positions, backup_path = sync_usmart_excel(
+            positions, backup_path, report_path = sync_usmart_excel(
                 excel_path,
                 portfolio_path,
                 cash=Decimal("2688.96"),
                 buying_power=Decimal("7585.18"),
                 legacy_portfolio_path=legacy_path,
+                reports_dir=root / "reports",
             )
 
             state = get_portfolio_snapshot(portfolio_path)
             legacy = json.loads(legacy_path.read_text(encoding="utf-8"))
             backup_exists = backup_path.is_file()
+            report_exists = report_path.is_file()
+            index = json.loads((report_path.parent / "index.json").read_text(encoding="utf-8"))
 
         self.assertEqual([position.symbol for position in positions], ["NVDA", "SOFI", "SPCX"])
         self.assertTrue(backup_exists)
+        self.assertTrue(report_exists)
         self.assertEqual(sorted(state.positions), ["NVDA", "SOFI", "SPCX"])
         self.assertEqual(state.cash, Decimal("2688.96"))
         self.assertEqual(state.buying_power, Decimal("7585.18"))
+        self.assertEqual(index["reports"][0]["type"], "sync")
         self.assertEqual(
             [position["ticker"] for position in legacy["positions"]],
             ["NVDA", "SOFI", "SPCX"],
         )
         self.assertEqual(Decimal(str(legacy["cash"])), Decimal("2688.96"))
+
+    def test_save_sync_report_writes_markdown_and_index(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            portfolio_path = root / "portfolio_migrated_candidate.json"
+            portfolio_path.write_text(
+                json.dumps(existing_schema(), ensure_ascii=False),
+                encoding="utf-8",
+            )
+            positions = parse_usmart_positions_from_rows_for_test(usmart_rows())
+            report_path = save_sync_report(
+                positions,
+                cash=Decimal("2688.96"),
+                backup_path=root / "backup.json",
+                reports_dir=root / "reports",
+                portfolio_path=portfolio_path,
+                generated_at=datetime(2026, 6, 24, 0, 0, 0, tzinfo=timezone.utc),
+            )
+            report_text = report_path.read_text(encoding="utf-8")
+            index = json.loads((root / "reports" / "index.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(report_path.name, "2026-06-24-sync.md")
+        self.assertIn("uSMART 持仓同步报告", report_text)
+        self.assertEqual(index["reports"][0]["type"], "sync")
+        self.assertEqual(index["reports"][0]["date"], "2026-06-24")
+
+    def test_build_sync_markdown_contains_read_only_notice(self) -> None:
+        text = build_sync_markdown(
+            parse_usmart_positions_from_rows_for_test(usmart_rows()),
+            cash=Decimal("2688.96"),
+            backup_path="backup.json",
+            generated_at=datetime(2026, 6, 24, 0, 0, 0, tzinfo=timezone.utc),
+        )
+
+        self.assertIn("未连接券商下单，未自动交易", text)
+        self.assertIn("NVDA", text)
 
     def test_backup_file_avoids_overwrite(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
