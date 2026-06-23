@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Callable, Iterable, Protocol
 
+from price_provider import InvalidSymbolError, normalize_symbol
 from portfolio_service import PortfolioError, get_portfolio_snapshot
 from screener import (
     DEFAULT_WATCHLIST_FILE,
@@ -28,11 +30,19 @@ DEFAULT_SCHEMA_PORTFOLIO_FILE = ROOT / "portfolio_migrated_candidate.json"
 @dataclass(frozen=True)
 class NewsRow:
     symbol: str
-    headline: str
-    source: str
+    title: str
+    publisher: str
     published_at: str
-    sentiment_hint: str
-    risk_note: str
+    link: str
+
+
+class NewsProviderError(Exception):
+    """新闻提供器异常。"""
+
+
+class NewsProvider(Protocol):
+    def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+        """返回指定股票最近新闻。"""
 
 
 @dataclass(frozen=True)
@@ -56,6 +66,119 @@ MOCK_EARNINGS: dict[str, tuple[str, str, str]] = {
     "SPCX": ("TBD", "low", "ETF/主题基金，优先关注底层持仓和主题波动。"),
     "TSLA": ("TBD", "high", "关注交付量、毛利率和自动驾驶业务表述。"),
 }
+
+
+def _iso_utc_from_timestamp(value: Any) -> str:
+    if isinstance(value, bool) or value is None:
+        return "未知"
+    try:
+        timestamp = float(value)
+    except (TypeError, ValueError):
+        return "未知"
+    return (
+        datetime.fromtimestamp(timestamp, tz=timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _iso_utc_from_yahoo_datetime(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return "未知"
+    try:
+        normalized = value.replace("Z", "+00:00")
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return (
+        parsed.astimezone(timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
+
+
+def _string_or_unknown(value: Any) -> str:
+    return value.strip() if isinstance(value, str) and value.strip() else "未知"
+
+
+class YahooFinanceNewsProvider:
+    """通过 yfinance 读取 Yahoo Finance 新闻。"""
+
+    SOURCE = "Yahoo Finance"
+
+    def __init__(self, ticker_factory: Callable[[str], Any] | None = None):
+        self._ticker_factory = ticker_factory
+
+    def _get_ticker_factory(self) -> Callable[[str], Any]:
+        if self._ticker_factory is not None:
+            return self._ticker_factory
+        try:
+            import yfinance as yf
+        except ImportError as exc:
+            raise NewsProviderError(
+                "yfinance is not installed; run: pip install yfinance"
+            ) from exc
+        return yf.Ticker
+
+    def _parse_news_item(self, symbol: str, item: Any) -> NewsRow | None:
+        if not isinstance(item, dict):
+            return None
+
+        content = item.get("content") if isinstance(item.get("content"), dict) else None
+        if content is not None:
+            provider = content.get("provider")
+            canonical_url = content.get("canonicalUrl")
+            return NewsRow(
+                symbol=symbol,
+                title=_string_or_unknown(content.get("title")),
+                publisher=_string_or_unknown(
+                    provider.get("displayName") if isinstance(provider, dict) else None
+                ),
+                published_at=_iso_utc_from_yahoo_datetime(content.get("pubDate")),
+                link=_string_or_unknown(
+                    canonical_url.get("url")
+                    if isinstance(canonical_url, dict)
+                    else content.get("clickThroughUrl")
+                ),
+            )
+
+        return NewsRow(
+            symbol=symbol,
+            title=_string_or_unknown(item.get("title")),
+            publisher=_string_or_unknown(item.get("publisher")),
+            published_at=_iso_utc_from_timestamp(item.get("providerPublishTime")),
+            link=_string_or_unknown(item.get("link")),
+        )
+
+    def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+        try:
+            normalized = normalize_symbol(symbol)
+        except InvalidSymbolError as exc:
+            raise NewsProviderError(f"invalid symbol: {symbol!r}") from exc
+
+        try:
+            ticker = self._get_ticker_factory()(normalized)
+            raw_news = ticker.news
+        except Exception as exc:
+            raise NewsProviderError(f"新闻获取失败：{exc}") from exc
+
+        if raw_news is None:
+            raw_news = []
+        if not isinstance(raw_news, list):
+            raise NewsProviderError(f"{normalized} 新闻格式异常。")
+
+        rows: list[NewsRow] = []
+        for item in raw_news:
+            row = self._parse_news_item(normalized, item)
+            if row is not None:
+                rows.append(row)
+            if len(rows) >= limit:
+                break
+        return rows
 
 
 def collect_focus_symbols(
@@ -87,33 +210,30 @@ def collect_focus_symbols(
     return normalized, tuple(warnings)
 
 
-def build_news_rows(symbols: Iterable[str]) -> list[NewsRow]:
-    """生成新闻摘要占位结构，后续可替换为真实新闻源。"""
+def fetch_news_rows(
+    symbols: Iterable[str],
+    *,
+    provider: NewsProvider | None = None,
+    per_symbol_limit: int = 3,
+) -> tuple[list[NewsRow], tuple[str, ...]]:
+    """获取真实新闻；单只失败不影响其他股票。"""
 
     normalized, warnings = normalize_symbols(symbols)
-    rows = [
-        NewsRow(
-            symbol=symbol,
-            headline=f"{symbol} 新闻摘要待接入真实数据源。",
-            source="placeholder",
-            published_at="TBD",
-            sentiment_hint="neutral",
-            risk_note="第一版仅提供占位结构，请人工核对真实新闻后再决策。",
-        )
-        for symbol in normalized
-    ]
-    rows.extend(
-        NewsRow(
-            symbol="INVALID",
-            headline="非法 symbol 已跳过。",
-            source="local",
-            published_at="TBD",
-            sentiment_hint="unknown",
-            risk_note=warning,
-        )
-        for warning in warnings
-    )
-    return rows
+    news_provider = provider or YahooFinanceNewsProvider()
+    rows: list[NewsRow] = []
+    result_warnings = list(warnings)
+
+    for symbol in normalized:
+        try:
+            symbol_rows = news_provider.get_news(symbol, limit=per_symbol_limit)
+        except (NewsProviderError, Exception) as exc:
+            result_warnings.append(f"{symbol} 新闻获取失败：{exc}")
+            continue
+        if not symbol_rows:
+            result_warnings.append(f"{symbol} 暂无新闻。")
+            continue
+        rows.extend(symbol_rows[:per_symbol_limit])
+    return rows, tuple(result_warnings)
 
 
 def build_earnings_rows(symbols: Iterable[str]) -> list[EarningsRow]:
@@ -147,21 +267,20 @@ def build_earnings_rows(symbols: Iterable[str]) -> list[EarningsRow]:
 
 
 def print_news_rows(rows: list[NewsRow], warnings: tuple[str, ...] = ()) -> None:
-    print("\n=== 股票新闻摘要（占位版）===")
+    print("\n=== Yahoo Finance 股票新闻 ===")
     for warning in warnings:
         print(f"[提示] {warning}")
     if not rows:
         print("暂无可关注股票。")
     else:
         print(
-            f"{'symbol':>8} {'source':>12} {'published_at':>16} "
-            f"{'sentiment':>12}  headline / risk_note"
+            f"{'symbol':>8} {'publisher':>18} {'published_at':>22}  title / link"
         )
         print("-" * 118)
         for row in rows:
             print(
-                f"{row.symbol:>8} {row.source:>12} {row.published_at:>16} "
-                f"{row.sentiment_hint:>12}  {row.headline} | {row.risk_note}"
+                f"{row.symbol:>8} {row.publisher:>18} {row.published_at:>22}  "
+                f"{row.title} | {row.link}"
             )
     print("\n只读新闻：未修改文件，未连接券商，未自动交易。")
 
@@ -186,9 +305,12 @@ def print_earnings_rows(rows: list[EarningsRow], warnings: tuple[str, ...] = ())
 def show_news_overview(
     portfolio_path: str | Path = DEFAULT_SCHEMA_PORTFOLIO_FILE,
     watchlist_path: str | Path = DEFAULT_WATCHLIST_FILE,
+    *,
+    provider: NewsProvider | None = None,
 ) -> bool:
     symbols, warnings = collect_focus_symbols(portfolio_path, watchlist_path)
-    print_news_rows(build_news_rows(symbols), warnings)
+    rows, news_warnings = fetch_news_rows(symbols, provider=provider)
+    print_news_rows(rows, (*warnings, *news_warnings))
     return True
 
 

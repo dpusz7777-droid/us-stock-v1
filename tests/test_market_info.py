@@ -12,12 +12,15 @@ from pathlib import Path
 
 from market_info import (
     build_earnings_rows,
-    build_news_rows,
     collect_focus_symbols,
+    fetch_news_rows,
+    NewsProviderError,
+    NewsRow,
     print_earnings_rows,
     print_news_rows,
     show_earnings_overview,
     show_news_overview,
+    YahooFinanceNewsProvider,
 )
 
 
@@ -96,15 +99,90 @@ class MarketInfoTests(unittest.TestCase):
         self.assertEqual(symbols, ["SOFI"])
         self.assertTrue(any("watchlist 格式错误" in warning for warning in warnings))
 
-    def test_build_news_rows_returns_required_placeholder_fields(self) -> None:
-        rows = build_news_rows(["NVDA"])
+    def test_yahoo_news_provider_parses_legacy_yfinance_items(self) -> None:
+        class FakeTicker:
+            news = [
+                {
+                    "title": "Nvidia headline",
+                    "publisher": "Yahoo Finance",
+                    "providerPublishTime": 1782057600,
+                    "link": "https://finance.yahoo.com/news/nvda",
+                }
+            ]
+
+        provider = YahooFinanceNewsProvider(ticker_factory=lambda symbol: FakeTicker())
+
+        rows = provider.get_news(" nvda ")
 
         self.assertEqual(rows[0].symbol, "NVDA")
-        self.assertIn("NVDA", rows[0].headline)
-        self.assertEqual(rows[0].source, "placeholder")
-        self.assertEqual(rows[0].published_at, "TBD")
-        self.assertEqual(rows[0].sentiment_hint, "neutral")
-        self.assertIn("占位结构", rows[0].risk_note)
+        self.assertEqual(rows[0].title, "Nvidia headline")
+        self.assertEqual(rows[0].publisher, "Yahoo Finance")
+        self.assertEqual(rows[0].published_at, "2026-06-21T16:00:00Z")
+        self.assertEqual(rows[0].link, "https://finance.yahoo.com/news/nvda")
+
+    def test_yahoo_news_provider_parses_content_yfinance_items(self) -> None:
+        class FakeTicker:
+            news = [
+                {
+                    "content": {
+                        "title": "Apple headline",
+                        "provider": {"displayName": "Reuters"},
+                        "pubDate": "2026-06-23T12:30:00Z",
+                        "canonicalUrl": {"url": "https://finance.yahoo.com/news/aapl"},
+                    }
+                }
+            ]
+
+        provider = YahooFinanceNewsProvider(ticker_factory=lambda symbol: FakeTicker())
+
+        rows = provider.get_news("AAPL")
+
+        self.assertEqual(rows[0].symbol, "AAPL")
+        self.assertEqual(rows[0].title, "Apple headline")
+        self.assertEqual(rows[0].publisher, "Reuters")
+        self.assertEqual(rows[0].published_at, "2026-06-23T12:30:00Z")
+        self.assertEqual(rows[0].link, "https://finance.yahoo.com/news/aapl")
+
+    def test_fetch_news_rows_returns_three_news_per_symbol(self) -> None:
+        class FakeProvider:
+            def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+                return [
+                    NewsRow(
+                        symbol=symbol,
+                        title=f"{symbol} title {index}",
+                        publisher="Yahoo Finance",
+                        published_at="2026-06-23T12:30:00Z",
+                        link=f"https://example.com/{symbol}/{index}",
+                    )
+                    for index in range(1, 5)
+                ][:limit]
+
+        rows, warnings = fetch_news_rows(["NVDA", "AAPL"], provider=FakeProvider())
+
+        self.assertEqual(len(rows), 6)
+        self.assertEqual([row.symbol for row in rows[:3]], ["NVDA", "NVDA", "NVDA"])
+        self.assertEqual([row.symbol for row in rows[3:]], ["AAPL", "AAPL", "AAPL"])
+        self.assertEqual(warnings, ())
+
+    def test_fetch_news_rows_keeps_running_when_one_symbol_fails(self) -> None:
+        class PartialProvider:
+            def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+                if symbol == "SOFI":
+                    raise NewsProviderError("fake network failure")
+                return [
+                    NewsRow(
+                        symbol=symbol,
+                        title="Nvidia headline",
+                        publisher="Yahoo Finance",
+                        published_at="2026-06-23T12:30:00Z",
+                        link="https://example.com/nvda",
+                    )
+                ]
+
+        rows, warnings = fetch_news_rows(["SOFI", "NVDA"], provider=PartialProvider())
+
+        self.assertEqual([row.symbol for row in rows], ["NVDA"])
+        self.assertTrue(any("SOFI 新闻获取失败" in warning for warning in warnings))
 
     def test_build_earnings_rows_returns_required_mock_fields(self) -> None:
         rows = build_earnings_rows(["NVDA", "UNKNOWN"])
@@ -120,12 +198,25 @@ class MarketInfoTests(unittest.TestCase):
         output = io.StringIO()
 
         with redirect_stdout(output):
-            print_news_rows(build_news_rows(["AAPL"]))
+            print_news_rows(
+                [
+                    NewsRow(
+                        symbol="AAPL",
+                        title="Apple headline",
+                        publisher="Yahoo Finance",
+                        published_at="2026-06-23T12:30:00Z",
+                        link="https://example.com/aapl",
+                    )
+                ]
+            )
 
         text = output.getvalue()
-        self.assertIn("股票新闻摘要", text)
+        self.assertIn("Yahoo Finance 股票新闻", text)
         self.assertIn("symbol", text)
-        self.assertIn("headline", text)
+        self.assertIn("title", text)
+        self.assertIn("publisher", text)
+        self.assertIn("published_at", text)
+        self.assertIn("https://example.com/aapl", text)
         self.assertIn("只读新闻：未修改文件，未连接券商，未自动交易", text)
 
     def test_print_earnings_rows_outputs_read_only_notice(self) -> None:
@@ -147,8 +238,26 @@ class MarketInfoTests(unittest.TestCase):
             watchlist_path: watchlist_path.read_bytes(),
         }
 
+        class FakeProvider:
+            def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
+                return [
+                    NewsRow(
+                        symbol=symbol,
+                        title=f"{symbol} headline",
+                        publisher="Yahoo Finance",
+                        published_at="2026-06-23T12:30:00Z",
+                        link=f"https://example.com/{symbol.lower()}",
+                    )
+                ]
+
         with redirect_stdout(io.StringIO()):
-            self.assertTrue(show_news_overview(portfolio_path, watchlist_path))
+            self.assertTrue(
+                show_news_overview(
+                    portfolio_path,
+                    watchlist_path,
+                    provider=FakeProvider(),
+                )
+            )
             self.assertTrue(show_earnings_overview(portfolio_path, watchlist_path))
 
         self.assertEqual(portfolio_path.read_bytes(), before[portfolio_path])

@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import main
+import market_info
 
 
 def schema_document() -> dict:
@@ -340,7 +341,7 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             ["--watchlist", "watchlist.json"],
         )
 
-    def test_news_command_outputs_placeholder_rows_without_subprocess(self) -> None:
+    def test_news_command_outputs_yahoo_rows_without_subprocess(self) -> None:
         _, portfolio_path = self.make_portfolio_file()
         watchlist_path = portfolio_path.with_name("watchlist.json")
         watchlist_path.write_text(
@@ -348,10 +349,30 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             encoding="utf-8",
         )
 
+        class FakeNewsProvider:
+            def get_news(
+                self, symbol: str, limit: int = 3
+            ) -> list[market_info.NewsRow]:
+                return [
+                    market_info.NewsRow(
+                        symbol=symbol,
+                        title=f"{symbol} headline {index}",
+                        publisher="Yahoo Finance",
+                        published_at="2026-06-23T12:30:00Z",
+                        link=f"https://example.com/{symbol.lower()}/{index}",
+                    )
+                    for index in range(1, limit + 1)
+                ]
+
         with (
             patch.object(main, "run_script") as run_script,
             patch.object(main.subprocess, "run") as subprocess_run,
             patch.object(main, "YFinancePriceProvider") as provider_class,
+            patch.object(
+                market_info,
+                "YahooFinanceNewsProvider",
+                return_value=FakeNewsProvider(),
+            ) as news_provider_class,
         ):
             output = self.run_main(
                 "news",
@@ -364,10 +385,13 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         run_script.assert_not_called()
         subprocess_run.assert_not_called()
         provider_class.assert_not_called()
-        self.assertIn("股票新闻摘要", output)
+        news_provider_class.assert_called_once()
+        self.assertIn("Yahoo Finance 股票新闻", output)
         self.assertIn("SOFI", output)
         self.assertIn("NVDA", output)
-        self.assertIn("headline", output)
+        self.assertIn("title", output)
+        self.assertIn("publisher", output)
+        self.assertIn("https://example.com/nvda/1", output)
         self.assertIn("只读新闻：未修改文件，未连接券商，未自动交易", output)
 
     def test_earnings_command_outputs_mock_rows_without_subprocess(self) -> None:
