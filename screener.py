@@ -8,14 +8,18 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import Iterable
 
-from price_provider import PriceProvider, PriceProviderError, YFinancePriceProvider
+from price_provider import InvalidSymbolError, PriceProvider, PriceProviderError, YFinancePriceProvider, normalize_symbol
 
 sys.stdout.reconfigure(encoding="utf-8")
+ROOT = Path(__file__).parent
+DEFAULT_WATCHLIST_FILE = ROOT / "watchlist.json"
 
 DEFAULT_CANDIDATES = (
     "NVDA",
@@ -41,6 +45,77 @@ class ScreenerRow:
     reason: str
     risk_note: str
     source: str
+
+
+class WatchlistLoadError(Exception):
+    """watchlist.json 格式错误。"""
+
+
+def normalize_symbols(symbols: Iterable[object]) -> tuple[list[str], tuple[str, ...]]:
+    """标准化、去重并跳过非法 symbol。"""
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    warnings: list[str] = []
+    for raw_symbol in symbols:
+        try:
+            symbol = normalize_symbol(raw_symbol)  # type: ignore[arg-type]
+        except InvalidSymbolError:
+            warnings.append(f"非法 symbol 已跳过：{raw_symbol!r}")
+            continue
+        if symbol in seen:
+            continue
+        seen.add(symbol)
+        normalized.append(symbol)
+    return normalized, tuple(warnings)
+
+
+def load_watchlist_symbols(path: str | Path) -> tuple[list[str], tuple[str, ...]]:
+    """读取 watchlist JSON，并返回标准化 symbol。"""
+
+    watchlist_path = Path(path)
+    try:
+        document = json.loads(watchlist_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise exc
+    except json.JSONDecodeError as exc:
+        raise WatchlistLoadError(
+            f"{watchlist_path} 不是有效 JSON：第 {exc.lineno} 行，第 {exc.colno} 列，{exc.msg}"
+        ) from exc
+    except OSError as exc:
+        raise WatchlistLoadError(f"无法读取 watchlist 文件 {watchlist_path}：{exc}") from exc
+
+    if not isinstance(document, dict):
+        raise WatchlistLoadError(f"{watchlist_path} 顶层必须是 JSON 对象。")
+    symbols = document.get("symbols")
+    if not isinstance(symbols, list):
+        raise WatchlistLoadError(f"{watchlist_path} 必须包含 symbols 数组。")
+
+    normalized, warnings = normalize_symbols(symbols)
+    if not normalized:
+        raise WatchlistLoadError(f"{watchlist_path} 没有可用 symbol。")
+    return normalized, warnings
+
+
+def resolve_candidate_symbols(
+    watchlist_path: str | Path | None = DEFAULT_WATCHLIST_FILE,
+    *,
+    fallback_symbols: Iterable[str] = DEFAULT_CANDIDATES,
+) -> tuple[list[str], tuple[str, ...]]:
+    """优先读取 watchlist；不存在或格式错误时回退默认候选池。"""
+
+    if watchlist_path is None:
+        return normalize_symbols(fallback_symbols)
+
+    try:
+        symbols, warnings = load_watchlist_symbols(watchlist_path)
+        return symbols, warnings
+    except FileNotFoundError:
+        symbols, warnings = normalize_symbols(fallback_symbols)
+        return symbols, (f"watchlist 不存在，已使用内置默认股票池：{watchlist_path}", *warnings)
+    except WatchlistLoadError as exc:
+        symbols, warnings = normalize_symbols(fallback_symbols)
+        return symbols, (f"watchlist 格式错误，已使用内置默认股票池：{exc}", *warnings)
 
 
 def _calculate_change_pct(
@@ -81,10 +156,21 @@ def screen_stocks(
     quote_provider = provider or YFinancePriceProvider()
     rows: list[ScreenerRow] = []
 
-    for raw_symbol in symbols:
-        symbol = raw_symbol.strip().upper()
-        if not symbol:
-            continue
+    normalized_symbols, symbol_warnings = normalize_symbols(symbols)
+    for raw_symbol in symbol_warnings:
+        rows.append(
+            ScreenerRow(
+                symbol="INVALID",
+                price=None,
+                previous_close=None,
+                change_pct=None,
+                reason="候选池包含非法 symbol，已跳过。",
+                risk_note=raw_symbol,
+                source="local",
+            )
+        )
+
+    for symbol in normalized_symbols:
         try:
             quote = quote_provider.get_quote(symbol)
             change_pct = _calculate_change_pct(quote.price, quote.previous_close)
@@ -152,14 +238,25 @@ def print_screener_results(rows: list[ScreenerRow]) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="只读股票筛选器")
     parser.add_argument(
+        "--watchlist",
+        default=str(DEFAULT_WATCHLIST_FILE),
+        help="watchlist JSON 文件路径，默认读取项目根目录 watchlist.json",
+    )
+    parser.add_argument(
         "--symbols",
         nargs="+",
-        default=list(DEFAULT_CANDIDATES),
-        help="候选股票代码，默认使用固定候选池",
+        help="手动指定候选股票代码；提供时优先于 watchlist",
     )
     args = parser.parse_args()
 
-    print_screener_results(screen_stocks(args.symbols))
+    if args.symbols:
+        symbols, warnings = normalize_symbols(args.symbols)
+    else:
+        symbols, warnings = resolve_candidate_symbols(args.watchlist)
+
+    for warning in warnings:
+        print(f"[提示] {warning}")
+    print_screener_results(screen_stocks(symbols))
 
 
 if __name__ == "__main__":

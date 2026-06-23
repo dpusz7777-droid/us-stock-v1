@@ -4,9 +4,12 @@
 from __future__ import annotations
 
 import io
+import json
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from decimal import Decimal
+from pathlib import Path
 
 import screener
 from price_provider import PriceProviderError, PriceQuote
@@ -75,6 +78,54 @@ class ScreenerTests(unittest.TestCase):
         self.assertIn("行情获取失败", failed.reason)
         self.assertIn("fake failure", failed.risk_note)
         self.assertEqual(failed.source, "unknown")
+
+    def test_normalize_symbols_strips_uppercases_and_deduplicates(self) -> None:
+        symbols, warnings = screener.normalize_symbols(
+            [" nvda ", "NVDA", "pltr", "", 123]
+        )
+
+        self.assertEqual(symbols, ["NVDA", "PLTR"])
+        self.assertEqual(len(warnings), 2)
+        self.assertIn("非法 symbol", warnings[0])
+
+    def test_load_watchlist_symbols_from_json_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "watchlist.json"
+            path.write_text(
+                json.dumps({"symbols": [" nvda ", "pltr", "NVDA", "sofi"]}),
+                encoding="utf-8",
+            )
+
+            symbols, warnings = screener.load_watchlist_symbols(path)
+
+        self.assertEqual(symbols, ["NVDA", "PLTR", "SOFI"])
+        self.assertEqual(warnings, ())
+
+    def test_resolve_candidate_symbols_falls_back_for_missing_watchlist(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing = Path(temp_dir) / "missing.json"
+
+            symbols, warnings = screener.resolve_candidate_symbols(
+                missing,
+                fallback_symbols=["NVDA", "AAPL"],
+            )
+
+        self.assertEqual(symbols, ["NVDA", "AAPL"])
+        self.assertIn("watchlist 不存在", warnings[0])
+
+    def test_resolve_candidate_symbols_falls_back_for_invalid_format(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "watchlist.json"
+            path.write_text(json.dumps({"bad": ["NVDA"]}), encoding="utf-8")
+
+            symbols, warnings = screener.resolve_candidate_symbols(
+                path,
+                fallback_symbols=["NVDA"],
+            )
+
+        self.assertEqual(symbols, ["NVDA"])
+        self.assertIn("watchlist 格式错误", warnings[0])
+        self.assertIn("symbols 数组", warnings[0])
 
     def test_print_screener_results_outputs_today_watchlist(self) -> None:
         rows = [

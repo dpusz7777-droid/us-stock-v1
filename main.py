@@ -397,6 +397,7 @@ def main():
 
     # screener
     p = sub.add_parser("screener", help="只读股票筛选")
+    p.add_argument("--watchlist", help="watchlist JSON 文件路径")
 
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
@@ -463,7 +464,10 @@ def main():
             print("请使用: python main.py report --daily")
 
     elif args.command == "screener":
-        run_script("screener.py")
+        cmd_args = []
+        if args.watchlist:
+            cmd_args += ["--watchlist", args.watchlist]
+        run_script("screener.py", cmd_args)
 
     elif args.command == "monitor":
         cmd_args = ["--portfolio-file", args.portfolio_file]

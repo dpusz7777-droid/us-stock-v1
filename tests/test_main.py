@@ -238,7 +238,16 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         with patch.object(main, "run_script") as run_script:
             self.run_main("screener")
 
-        run_script.assert_called_once_with("screener.py")
+        run_script.assert_called_once_with("screener.py", [])
+
+    def test_screener_watchlist_argument_routes_to_screener_script(self) -> None:
+        with patch.object(main, "run_script") as run_script:
+            self.run_main("screener", "--watchlist", "watchlist.json")
+
+        run_script.assert_called_once_with(
+            "screener.py",
+            ["--watchlist", "watchlist.json"],
+        )
 
 
 if __name__ == "__main__":
