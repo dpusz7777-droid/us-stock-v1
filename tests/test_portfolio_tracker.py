@@ -138,12 +138,12 @@ class PortfolioTrackerReadOnlyTests(unittest.TestCase):
         self.assertIn("1,032.50", output)
         self.assertIn("404.00", output)
 
-    def test_unknown_cash_is_not_displayed_as_zero(self) -> None:
+    def test_candidate_uses_legacy_cash_without_displaying_zero(self) -> None:
         output = self.run_tracker("--portfolio-file", str(CANDIDATE_FILE))
 
-        self.assertIn("现金: 未知", output)
+        self.assertIn("现金: $2,000.00", output)
         self.assertIn("总资产: 无法计算", output)
-        self.assertIn("购买力: 无法计算", output)
+        self.assertIn("购买力: $2,000.00", output)
         self.assertNotIn("现金: $0.00", output)
         self.assertNotIn("总资产: $0.00", output)
         self.assertNotIn("购买力: $0.00", output)

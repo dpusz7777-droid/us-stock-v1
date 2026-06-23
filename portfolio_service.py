@@ -22,6 +22,7 @@ SUPPORTED_TRANSACTION_TYPES = {"OPENING_POSITION", "BUY", "SELL"}
 SUPPORTED_CASH_STATUSES = {"known", "unknown"}
 SYMBOL_PATTERN = re.compile(r"^[A-Z0-9]+(?:[.-][A-Z0-9]+)*$")
 ZERO = Decimal("0")
+LEGACY_PORTFOLIO_FILENAME = "portfolio.json"
 
 
 class PortfolioError(Exception):
@@ -126,6 +127,51 @@ def _optional_decimal(
     return _to_decimal(value, field_name, allow_zero=allow_zero)
 
 
+def _load_legacy_cash(schema_path: Path) -> Decimal | None:
+    legacy_path = schema_path.with_name(LEGACY_PORTFOLIO_FILENAME)
+    if legacy_path == schema_path or not legacy_path.is_file():
+        return None
+    try:
+        with legacy_path.open("r", encoding="utf-8") as file:
+            legacy_document = json.load(file, parse_float=Decimal, parse_int=Decimal)
+    except (json.JSONDecodeError, OSError, UnicodeError):
+        return None
+    if not isinstance(legacy_document, Mapping):
+        return None
+    cash = legacy_document.get("cash")
+    if cash is None:
+        return None
+    try:
+        return _to_decimal(cash, "portfolio.json.cash", allow_zero=True)
+    except PortfolioValidationError:
+        return None
+
+
+def _apply_legacy_cash_compatibility(
+    document: dict[str, Any],
+    schema_path: Path,
+) -> dict[str, Any]:
+    if document.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
+        return document
+    account = document.get("account")
+    if not isinstance(account, dict):
+        return document
+    if account.get("cash") is not None:
+        return document
+
+    legacy_cash = _load_legacy_cash(schema_path)
+    if legacy_cash is None:
+        return document
+
+    migrated = copy.deepcopy(document)
+    migrated_account = migrated["account"]
+    migrated_account["cash"] = legacy_cash
+    if migrated_account.get("buying_power") is None:
+        migrated_account["buying_power"] = legacy_cash
+    migrated_account["cash_status"] = "known"
+    return migrated
+
+
 def load_portfolio(path: str | Path) -> dict[str, Any]:
     """只读加载 Schema JSON，JSON 数字直接解析为 Decimal。"""
 
@@ -143,7 +189,7 @@ def load_portfolio(path: str | Path) -> dict[str, Any]:
         raise PortfolioLoadError(f"无法读取持仓文件 {portfolio_path}：{exc}") from exc
     if not isinstance(document, dict):
         raise PortfolioLoadError("持仓 JSON 顶层必须是对象。")
-    return document
+    return _apply_legacy_cash_compatibility(document, portfolio_path)
 
 
 def validate_portfolio(document: Mapping[str, Any]) -> None:
@@ -289,11 +335,14 @@ def build_portfolio_state(document: Mapping[str, Any]) -> PortfolioState:
     validate_portfolio(document)
     source_copy = copy.deepcopy(document)
     account = source_copy["account"]
-    cash_status = account["cash_status"]
-    account_cash = _optional_decimal(account.get("cash"), "account.cash", allow_zero=True)
+    declared_cash_status = account["cash_status"]
+    account_cash = _optional_decimal(
+        account.get("cash"), "account.cash", allow_zero=True
+    )
     account_buying_power = _optional_decimal(
         account.get("buying_power"), "account.buying_power", allow_zero=True
     )
+    cash_status = "known" if account_cash is not None else declared_cash_status
     transactions = sorted(source_copy["transactions"], key=_transaction_sort_key)
 
     mutable_positions: dict[str, dict[str, Decimal]] = {}

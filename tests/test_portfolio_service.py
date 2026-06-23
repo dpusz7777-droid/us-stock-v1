@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 import copy
+import json
+import tempfile
 import unittest
 from decimal import Decimal
+from pathlib import Path
 
 from portfolio_service import (
     PortfolioCalculationError,
@@ -16,6 +19,7 @@ from portfolio_service import (
     UnsupportedTransactionError,
     apply_market_prices,
     build_portfolio_state,
+    load_portfolio,
     validate_portfolio,
 )
 
@@ -158,11 +162,55 @@ class PortfolioServiceTests(unittest.TestCase):
         self.assertEqual(state.cash, D("988"))
         self.assertEqual(state.buying_power, D("900"))
 
+    def test_account_cash_overrides_unknown_cash_status(self) -> None:
+        state = build_portfolio_state(
+            document(
+                [opening_position("txn_001", "SOFI", "2", "10")],
+                cash_status="unknown",
+                account_extra={"cash": D("1000")},
+            )
+        )
+
+        self.assertEqual(state.cash_status, "known")
+        self.assertEqual(state.cash, D("1000"))
+        self.assertEqual(state.buying_power, D("1000"))
+
     def test_account_cash_and_buying_power_validate_as_numbers(self) -> None:
         with self.assertRaisesRegex(PortfolioValidationError, "account.cash"):
             validate_portfolio(
                 document([], cash_status="known", account_extra={"cash": "1000"})
             )
+
+    def test_load_portfolio_migrates_legacy_cash_without_writing_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            schema_path = root / "portfolio_migrated_candidate.json"
+            legacy_path = root / "portfolio.json"
+            schema_data = document(
+                [opening_position("txn_001", "SOFI", "2", "10")],
+                cash_status="unknown",
+            )
+            schema_path.write_text(
+                json.dumps(schema_data, ensure_ascii=False, default=float),
+                encoding="utf-8",
+            )
+            legacy_path.write_text(
+                json.dumps({"positions": [], "cash": 2000.0}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            schema_before = schema_path.read_bytes()
+            legacy_before = legacy_path.read_bytes()
+
+            loaded = load_portfolio(schema_path)
+            state = build_portfolio_state(loaded)
+
+            self.assertEqual(loaded["account"]["cash_status"], "known")
+            self.assertEqual(loaded["account"]["cash"], D("2000.0"))
+            self.assertEqual(loaded["account"]["buying_power"], D("2000.0"))
+            self.assertEqual(state.cash, D("2000.0"))
+            self.assertEqual(state.buying_power, D("2000.0"))
+            self.assertEqual(schema_path.read_bytes(), schema_before)
+            self.assertEqual(legacy_path.read_bytes(), legacy_before)
 
     def test_buy_uses_weighted_average_and_fees(self) -> None:
         state = build_portfolio_state(

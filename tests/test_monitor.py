@@ -123,7 +123,58 @@ class MonitorReadOnlyTests(unittest.TestCase):
         )
         return temp_dir, path
 
-    def test_candidate_displays_schema_positions_and_unknown_cash(self) -> None:
+    def make_candidate_with_legacy_cash(
+        self,
+        cash: float,
+    ) -> tuple[tempfile.TemporaryDirectory, Path]:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        root = Path(temp_dir.name)
+        candidate_path = root / "portfolio_migrated_candidate.json"
+        candidate = {
+            "schema_version": "1.1",
+            "account": {
+                "account_id": "alert_test",
+                "account_name": "预警测试账户",
+                "broker": "test",
+                "base_currency": "USD",
+                "cash_status": "unknown",
+                "created_at": "2026-06-22T17:00:00Z",
+                "updated_at": "2026-06-22T17:00:00Z",
+            },
+            "settings": {
+                "stop_loss_pct": 8,
+                "target_profit_pct": 25,
+                "max_single_position_pct": 20,
+            },
+            "transactions": [
+                {
+                    "transaction_id": "txn_alert_001",
+                    "external_id": None,
+                    "transaction_type": "OPENING_POSITION",
+                    "symbol": "SOFI",
+                    "shares": 10,
+                    "price": 10,
+                    "amount": None,
+                    "fees": 0,
+                    "executed_at": None,
+                    "effective_at": "2026-06-22T17:15:41Z",
+                    "recorded_at": "2026-06-22T17:15:41Z",
+                    "source": "legacy_migration",
+                    "note": "测试期初持仓。",
+                }
+            ],
+        }
+        candidate_path.write_text(
+            json.dumps(candidate, ensure_ascii=False), encoding="utf-8"
+        )
+        (root / "portfolio.json").write_text(
+            json.dumps({"positions": [], "cash": cash}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return temp_dir, candidate_path
+
+    def test_candidate_displays_schema_positions_and_legacy_cash(self) -> None:
         output = self.run_monitor("--portfolio-file", str(CANDIDATE_FILE))
 
         self.assertIn("Schema 版本: 1.1", output)
@@ -137,9 +188,9 @@ class MonitorReadOnlyTests(unittest.TestCase):
         self.assertIn("$      202.00", output)
         self.assertIn("$      1,032.50", output)
         self.assertIn("$        404.00", output)
-        self.assertIn("现金: 未知", output)
+        self.assertIn("现金: $2,000.00", output)
         self.assertIn("总资产: 无法计算", output)
-        self.assertIn("购买力: 无法计算", output)
+        self.assertIn("购买力: $2,000.00", output)
         self.assertNotIn("现金: $0.00", output)
         self.assertNotIn("总资产: $0.00", output)
         self.assertNotIn("购买力: $0.00", output)
@@ -248,6 +299,34 @@ class MonitorReadOnlyTests(unittest.TestCase):
         self.assertIn("价格未知", text)
         self.assertIn("[行情提示] LOSS 行情获取失败：fake failure", text)
         self.assertNotIn("Traceback", text)
+
+    def test_alert_uses_legacy_cash_for_total_equity_allocation(self) -> None:
+        _, path = self.make_candidate_with_legacy_cash(cash=100.0)
+
+        class FakeProvider:
+            def get_quote(self, symbol: str) -> monitor.PriceQuote:
+                return monitor.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("10.00"),
+                    previous_close=None,
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        output = io.StringIO()
+        with (
+            patch.object(sys, "argv", ["monitor.py", "--portfolio-file", str(path), "--alert"]),
+            patch.object(monitor, "YFinancePriceProvider", return_value=FakeProvider()),
+            redirect_stdout(output),
+        ):
+            monitor.main()
+
+        text = output.getvalue()
+        self.assertIn("当前持仓预警列表", text)
+        self.assertIn("SOFI", text)
+        self.assertIn("$100.00", text)
+        self.assertIn("+50.00%", text)
+        self.assertNotIn("现金基线未知", text)
 
 
 if __name__ == "__main__":

@@ -72,6 +72,22 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         return temp_dir, path
 
+    def make_candidate_with_legacy_cash(
+        self, legacy_cash: float = 2000.0
+    ) -> tuple[tempfile.TemporaryDirectory, Path]:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        root = Path(temp_dir.name)
+        candidate_path = root / "portfolio_migrated_candidate.json"
+        candidate_path.write_text(
+            json.dumps(schema_document(), ensure_ascii=False), encoding="utf-8"
+        )
+        (root / "portfolio.json").write_text(
+            json.dumps({"positions": [], "cash": legacy_cash}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return temp_dir, candidate_path
+
     def run_main(self, *arguments: str) -> str:
         output = io.StringIO()
         with patch.object(sys, "argv", ["main.py", *arguments]), redirect_stdout(output):
@@ -157,6 +173,25 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         self.assertIn("+25.00%", output)
         self.assertIn("已按 --with-price 请求行情", output)
         self.assertNotIn("未访问网络", output)
+
+    def test_portfolio_with_price_uses_legacy_cash_for_total_equity(self) -> None:
+        _, path = self.make_candidate_with_legacy_cash(legacy_cash=100.0)
+
+        class FakeProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                return main.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("12.50"),
+                    previous_close=Decimal("12.00"),
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        with patch.object(main, "YFinancePriceProvider", return_value=FakeProvider()):
+            output = self.run_main("portfolio", "--portfolio-file", str(path), "--with-price")
+
+        self.assertIn("现金: $100.00", output)
+        self.assertIn("总资产: $125.00", output)
 
     def test_portfolio_with_price_keeps_positions_when_quote_fails(self) -> None:
         _, path = self.make_portfolio_file()
@@ -245,6 +280,27 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         self.assertIn("总资产: $125.00", output)
         self.assertIn("购买力: $80.00", output)
         self.assertIn("仓位占比", output)
+        self.assertIn("+20.00%", output)
+
+    def test_daily_report_uses_legacy_cash_when_account_cash_is_missing(self) -> None:
+        _, path = self.make_candidate_with_legacy_cash(legacy_cash=100.0)
+
+        class FakeProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                return main.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("12.50"),
+                    previous_close=Decimal("12.00"),
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        with patch.object(main, "YFinancePriceProvider", return_value=FakeProvider()):
+            output = self.run_main("report", "--daily", "--portfolio-file", str(path))
+
+        self.assertIn("现金: $100.00", output)
+        self.assertIn("总资产: $125.00", output)
+        self.assertIn("购买力: $100.00", output)
         self.assertIn("+20.00%", output)
 
     def test_daily_report_keeps_running_when_price_fetch_fails(self) -> None:
