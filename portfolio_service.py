@@ -115,6 +115,17 @@ def _normalize_symbol(value: Any, field_name: str) -> str:
     return symbol
 
 
+def _optional_decimal(
+    value: Any,
+    field_name: str,
+    *,
+    allow_zero: bool,
+) -> Decimal | None:
+    if value is None:
+        return None
+    return _to_decimal(value, field_name, allow_zero=allow_zero)
+
+
 def load_portfolio(path: str | Path) -> dict[str, Any]:
     """只读加载 Schema JSON，JSON 数字直接解析为 Decimal。"""
 
@@ -154,6 +165,10 @@ def validate_portfolio(document: Mapping[str, Any]) -> None:
         raise PortfolioValidationError(
             "account.cash_status 必须是 'known' 或 'unknown'。"
         )
+    _optional_decimal(account.get("cash"), "account.cash", allow_zero=True)
+    _optional_decimal(
+        account.get("buying_power"), "account.buying_power", allow_zero=True
+    )
 
     transactions = document.get("transactions")
     if not isinstance(transactions, list):
@@ -275,6 +290,10 @@ def build_portfolio_state(document: Mapping[str, Any]) -> PortfolioState:
     source_copy = copy.deepcopy(document)
     account = source_copy["account"]
     cash_status = account["cash_status"]
+    account_cash = _optional_decimal(account.get("cash"), "account.cash", allow_zero=True)
+    account_buying_power = _optional_decimal(
+        account.get("buying_power"), "account.buying_power", allow_zero=True
+    )
     transactions = sorted(source_copy["transactions"], key=_transaction_sort_key)
 
     mutable_positions: dict[str, dict[str, Decimal]] = {}
@@ -357,7 +376,12 @@ def build_portfolio_state(document: Mapping[str, Any]) -> PortfolioState:
             "现金基线未知，cash、total_equity 和 buying_power 不可计算。",
         )
 
-    cash = cash_change if cash_status == "known" else None
+    if cash_status == "known":
+        cash = (account_cash if account_cash is not None else ZERO) + cash_change
+        buying_power = account_buying_power if account_buying_power is not None else cash
+    else:
+        cash = None
+        buying_power = None
     return PortfolioState(
         schema_version=SUPPORTED_SCHEMA_VERSION,
         cash_status=cash_status,
@@ -369,7 +393,7 @@ def build_portfolio_state(document: Mapping[str, Any]) -> PortfolioState:
         total_market_value=None,
         total_unrealized_pnl=None,
         total_equity=None,
-        buying_power=cash if cash_status == "known" else None,
+        buying_power=buying_power,
         prices_complete=False,
         warnings=warnings,
     )
@@ -448,7 +472,7 @@ def apply_market_prices(
         total_market_value=total_market_value,
         total_unrealized_pnl=total_unrealized,
         total_equity=total_equity,
-        buying_power=state.cash if state.cash_status == "known" else None,
+        buying_power=state.buying_power if state.cash_status == "known" else None,
         prices_complete=prices_complete,
     )
 

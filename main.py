@@ -242,28 +242,39 @@ def print_daily_report(
     if state.cash_status == "unknown":
         print("现金: 未知")
         print("总资产: 无法计算（现金基线未知）")
+        print("购买力: 未知")
     else:
         print(f"现金: {_money_or_unknown(state.cash)}")
         print(f"总资产: {_money_or_unknown(state.total_equity)}")
+        print(f"购买力: {_money_or_unknown(state.buying_power)}")
 
     print("\n[当前持仓列表]")
     if not state.positions:
         print("暂无持仓")
     else:
+        allocation_base = state.total_equity or state.total_market_value
         print(
             f"{'代码':>8} {'股数':>12} {'平均成本':>14} {'当前价格':>14} "
-            f"{'当前市值':>14} {'未实现盈亏':>14} {'盈亏率':>12}"
+            f"{'当前市值':>14} {'未实现盈亏':>14} {'盈亏率':>12} {'仓位占比':>12}"
         )
-        print(f"{'-' * 96}")
+        print(f"{'-' * 110}")
         for symbol in sorted(state.positions):
             position = state.positions[symbol]
+            allocation_pct = (
+                position.market_value / allocation_base * Decimal("100")
+                if position.market_value is not None
+                and allocation_base is not None
+                and allocation_base != Decimal("0")
+                else None
+            )
             print(
                 f"{position.symbol:>8} {str(position.shares):>12} "
                 f"${position.avg_cost:>12,.2f} "
                 f"{_money_or_unknown(position.last_price):>14} "
                 f"{_money_or_unknown(position.market_value):>14} "
                 f"{_money_or_unknown(position.unrealized_pnl):>14} "
-                f"{_pct_or_unknown(position.unrealized_pnl_pct):>12}"
+                f"{_pct_or_unknown(position.unrealized_pnl_pct):>12} "
+                f"{_pct_or_unknown(allocation_pct):>12}"
             )
 
     print("\n[止盈/止损预警摘要]")

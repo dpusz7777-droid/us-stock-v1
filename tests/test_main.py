@@ -63,6 +63,15 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         )
         return temp_dir, path
 
+    def make_portfolio_file_from_document(
+        self, data: dict
+    ) -> tuple[tempfile.TemporaryDirectory, Path]:
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        path = Path(temp_dir.name) / "portfolio.json"
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return temp_dir, path
+
     def run_main(self, *arguments: str) -> str:
         output = io.StringIO()
         with patch.object(sys, "argv", ["main.py", *arguments]), redirect_stdout(output):
@@ -211,6 +220,32 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         self.assertIn("[今日关注事项]", output)
         self.assertIn("收益管理", output)
         self.assertIn("只读日报：未修改文件，未连接券商，未自动交易", output)
+
+    def test_daily_report_outputs_cash_buying_power_and_allocation(self) -> None:
+        data = schema_document()
+        data["account"]["cash_status"] = "known"
+        data["account"]["cash"] = 100
+        data["account"]["buying_power"] = 80
+        _, path = self.make_portfolio_file_from_document(data)
+
+        class FakeProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                return main.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("12.50"),
+                    previous_close=Decimal("12.00"),
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        with patch.object(main, "YFinancePriceProvider", return_value=FakeProvider()):
+            output = self.run_main("report", "--daily", "--portfolio-file", str(path))
+
+        self.assertIn("现金: $100.00", output)
+        self.assertIn("总资产: $125.00", output)
+        self.assertIn("购买力: $80.00", output)
+        self.assertIn("仓位占比", output)
+        self.assertIn("+20.00%", output)
 
     def test_daily_report_keeps_running_when_price_fetch_fails(self) -> None:
         _, path = self.make_portfolio_file()

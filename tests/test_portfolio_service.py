@@ -74,19 +74,25 @@ def normal_transaction(
 
 
 def document(
-    transactions: list[dict], cash_status: str = "unknown", version: str = "1.1"
+    transactions: list[dict],
+    cash_status: str = "unknown",
+    version: str = "1.1",
+    account_extra: dict | None = None,
 ) -> dict:
+    account = {
+        "account_id": "test_account",
+        "account_name": "测试账户",
+        "broker": "test",
+        "base_currency": "USD",
+        "cash_status": cash_status,
+        "created_at": "2026-06-22T17:00:00Z",
+        "updated_at": "2026-06-22T17:00:00Z",
+    }
+    if account_extra:
+        account.update(account_extra)
     return {
         "schema_version": version,
-        "account": {
-            "account_id": "test_account",
-            "account_name": "测试账户",
-            "broker": "test",
-            "base_currency": "USD",
-            "cash_status": cash_status,
-            "created_at": "2026-06-22T17:00:00Z",
-            "updated_at": "2026-06-22T17:00:00Z",
-        },
+        "account": account,
         "settings": {
             "stop_loss_pct": D("8"),
             "target_profit_pct": D("25"),
@@ -136,6 +142,27 @@ class PortfolioServiceTests(unittest.TestCase):
 
         self.assertEqual(state.cash, D("0"))
         self.assertEqual(state.buying_power, D("0"))
+
+    def test_known_cash_uses_account_cash_and_buying_power(self) -> None:
+        state = build_portfolio_state(
+            document(
+                [
+                    opening_position("txn_001", "SOFI", "2", "10"),
+                    normal_transaction("txn_002", "BUY", "SOFI", "1", "12"),
+                ],
+                cash_status="known",
+                account_extra={"cash": D("1000"), "buying_power": D("900")},
+            )
+        )
+
+        self.assertEqual(state.cash, D("988"))
+        self.assertEqual(state.buying_power, D("900"))
+
+    def test_account_cash_and_buying_power_validate_as_numbers(self) -> None:
+        with self.assertRaisesRegex(PortfolioValidationError, "account.cash"):
+            validate_portfolio(
+                document([], cash_status="known", account_extra={"cash": "1000"})
+            )
 
     def test_buy_uses_weighted_average_and_fees(self) -> None:
         state = build_portfolio_state(
@@ -268,6 +295,22 @@ class PortfolioServiceTests(unittest.TestCase):
         self.assertIsNone(priced.total_equity)
         self.assertIsNone(priced.cash)
         self.assertIsNone(priced.buying_power)
+
+    def test_known_cash_total_equity_and_buying_power_survive_prices(self) -> None:
+        state = build_portfolio_state(
+            document(
+                [opening_position("txn_001", "SOFI", "2", "10")],
+                cash_status="known",
+                account_extra={"cash": D("1000"), "buying_power": D("850")},
+            )
+        )
+
+        priced = apply_market_prices(state, {"SOFI": D("12")})
+
+        self.assertEqual(priced.cash, D("1000"))
+        self.assertEqual(priced.buying_power, D("850"))
+        self.assertEqual(priced.total_market_value, D("24"))
+        self.assertEqual(priced.total_equity, D("1024"))
 
     def test_missing_price_makes_totals_incomplete(self) -> None:
         state = build_portfolio_state(
