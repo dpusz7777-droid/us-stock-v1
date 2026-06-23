@@ -18,6 +18,7 @@ import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
+from briefing import show_briefing
 from price_provider import PriceProvider, PriceProviderError, PriceQuote, YFinancePriceProvider
 from market_info import show_earnings_overview, show_news_overview
 from portfolio_service import (
@@ -437,6 +438,19 @@ def main():
         help="watchlist JSON 文件路径",
     )
 
+    # briefing
+    p = sub.add_parser("briefing", help="每日统一简报")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
+    p.add_argument(
+        "--watchlist",
+        default=str(ROOT / "watchlist.json"),
+        help="watchlist JSON 文件路径",
+    )
+
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
     p.add_argument("--daily", action="store_true", help="每日简报")
@@ -512,6 +526,9 @@ def main():
 
     elif args.command == "earnings":
         show_earnings_overview(args.portfolio_file, args.watchlist)
+
+    elif args.command == "briefing":
+        show_briefing(args.portfolio_file, args.watchlist)
 
     elif args.command == "monitor":
         cmd_args = ["--portfolio-file", args.portfolio_file]

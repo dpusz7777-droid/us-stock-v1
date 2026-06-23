@@ -424,6 +424,21 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         self.assertIn("earnings_date", output)
         self.assertIn("只读财报：未修改文件，未连接券商，未自动交易", output)
 
+    def test_briefing_command_routes_to_unified_briefing(self) -> None:
+        with patch.object(main, "show_briefing", return_value=True) as show_briefing:
+            self.run_main(
+                "briefing",
+                "--portfolio-file",
+                "portfolio_migrated_candidate.json",
+                "--watchlist",
+                "watchlist.json",
+            )
+
+        show_briefing.assert_called_once_with(
+            "portfolio_migrated_candidate.json",
+            "watchlist.json",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
