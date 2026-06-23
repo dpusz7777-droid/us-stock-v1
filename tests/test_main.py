@@ -457,6 +457,29 @@ class MainPortfolioOverviewTests(unittest.TestCase):
         show_ai_briefing.assert_called_once_with(
             "portfolio_migrated_candidate.json",
             "watchlist.json",
+            save_report=False,
+        )
+
+    def test_briefing_ai_save_command_routes_to_ai_briefing_save(self) -> None:
+        with patch.object(
+            main,
+            "show_ai_briefing",
+            return_value=True,
+        ) as show_ai_briefing:
+            self.run_main(
+                "briefing",
+                "--ai",
+                "--save",
+                "--portfolio-file",
+                "portfolio_migrated_candidate.json",
+                "--watchlist",
+                "watchlist.json",
+            )
+
+        show_ai_briefing.assert_called_once_with(
+            "portfolio_migrated_candidate.json",
+            "watchlist.json",
+            save_report=True,
         )
 
 

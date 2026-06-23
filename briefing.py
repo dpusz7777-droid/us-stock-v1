@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,9 @@ from portfolio_service import (
 )
 from price_provider import PriceProvider, PriceProviderError, PriceQuote, YFinancePriceProvider
 from screener import ScreenerRow, screen_stocks
+
+
+DEFAULT_REPORTS_DIR = Path(__file__).parent / "reports"
 
 
 def _money(value: Decimal | None) -> str:
@@ -351,6 +355,70 @@ def print_ai_briefing(result: dict[str, str]) -> None:
     print("\n只读 AI 简报：未修改文件，未连接券商，未自动交易。")
 
 
+def build_ai_briefing_markdown(
+    result: dict[str, str],
+    *,
+    generated_at: datetime | None = None,
+) -> str:
+    """生成可保存的 AI 简报 Markdown。"""
+
+    timestamp = (generated_at or datetime.now().astimezone()).replace(microsecond=0)
+    return (
+        "# AI 每日简报\n\n"
+        f"生成时间: {timestamp.isoformat()}\n\n"
+        "数据源说明: 持仓来自 portfolio_migrated_candidate.json，观察池来自 "
+        "watchlist.json，行情和新闻来自 Yahoo Finance/yfinance，AI 分析来自 "
+        "DeepSeek 兼容 LLMClient。本文只供人工复核，不构成自动交易指令。\n\n"
+        "## 账户摘要\n\n"
+        f"{result['account_summary']}\n\n"
+        "## 持仓分析\n\n"
+        f"{result['portfolio_analysis']}\n\n"
+        "## 观察池分析\n\n"
+        f"{result['watchlist_analysis']}\n\n"
+        "## 风险提示\n\n"
+        f"{result['risk_warning']}\n\n"
+        "## 今日操作建议\n\n"
+        f"{result['action_items']}\n"
+    )
+
+
+def _next_report_path(
+    reports_dir: str | Path,
+    generated_at: datetime,
+) -> Path:
+    report_dir = Path(reports_dir)
+    date_text = generated_at.strftime("%Y-%m-%d")
+    base_path = report_dir / f"{date_text}-ai-briefing.md"
+    if not base_path.exists():
+        return base_path
+    timestamp = generated_at.strftime("%H%M%S")
+    candidate = report_dir / f"{date_text}-ai-briefing-{timestamp}.md"
+    counter = 2
+    while candidate.exists():
+        candidate = report_dir / f"{date_text}-ai-briefing-{timestamp}-{counter}.md"
+        counter += 1
+    return candidate
+
+
+def save_ai_briefing_report(
+    result: dict[str, str],
+    *,
+    reports_dir: str | Path = DEFAULT_REPORTS_DIR,
+    generated_at: datetime | None = None,
+) -> Path:
+    """保存 AI 简报 Markdown；不会覆盖已有报告。"""
+
+    timestamp = generated_at or datetime.now().astimezone()
+    report_dir = Path(reports_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = _next_report_path(report_dir, timestamp)
+    report_path.write_text(
+        build_ai_briefing_markdown(result, generated_at=timestamp),
+        encoding="utf-8",
+    )
+    return report_path
+
+
 def show_ai_briefing(
     portfolio_path: str | Path = DEFAULT_SCHEMA_PORTFOLIO_FILE,
     watchlist_path: str | Path = DEFAULT_WATCHLIST_FILE,
@@ -358,6 +426,8 @@ def show_ai_briefing(
     price_provider: PriceProvider | None = None,
     news_provider: NewsProvider | None = None,
     llm_client: LLMClient | None = None,
+    save_report: bool = False,
+    reports_dir: str | Path = DEFAULT_REPORTS_DIR,
 ) -> bool:
     """输出 AI 简报；AI 返回 JSON，最终排版由本模块负责。"""
 
@@ -375,6 +445,9 @@ def show_ai_briefing(
         return False
 
     print_ai_briefing(result)
+    if save_report:
+        report_path = save_ai_briefing_report(result, reports_dir=reports_dir)
+        print(f"\n已保存 Markdown 报告: {report_path}")
     return True
 
 
@@ -391,9 +464,10 @@ def main() -> None:
         help="watchlist JSON 文件路径",
     )
     parser.add_argument("--ai", action="store_true", help="调用 LLM 生成 AI 简报")
+    parser.add_argument("--save", action="store_true", help="保存 AI 简报 Markdown")
     args = parser.parse_args()
     if args.ai:
-        show_ai_briefing(args.portfolio_file, args.watchlist)
+        show_ai_briefing(args.portfolio_file, args.watchlist, save_report=args.save)
     else:
         show_briefing(args.portfolio_file, args.watchlist)
 

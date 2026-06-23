@@ -451,6 +451,7 @@ def main():
         help="watchlist JSON 文件路径",
     )
     p.add_argument("--ai", action="store_true", help="调用 LLM 生成 AI 简报")
+    p.add_argument("--save", action="store_true", help="保存 AI 简报 Markdown")
 
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
@@ -530,7 +531,7 @@ def main():
 
     elif args.command == "briefing":
         if args.ai:
-            show_ai_briefing(args.portfolio_file, args.watchlist)
+            show_ai_briefing(args.portfolio_file, args.watchlist, save_report=args.save)
         else:
             show_briefing(args.portfolio_file, args.watchlist)
 

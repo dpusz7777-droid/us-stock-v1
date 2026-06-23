@@ -8,11 +8,18 @@ import json
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
 from ai_briefing import LLMClientError
-from briefing import build_briefing_data, show_ai_briefing, show_briefing
+from briefing import (
+    build_ai_briefing_markdown,
+    build_briefing_data,
+    save_ai_briefing_report,
+    show_ai_briefing,
+    show_briefing,
+)
 from market_info import NewsProviderError, NewsRow
 from price_provider import PriceProviderError, PriceQuote
 
@@ -248,29 +255,115 @@ class BriefingTests(unittest.TestCase):
         self.assertIn("[今日操作建议]", text)
         self.assertIn("只读 AI 简报：未修改文件，未连接券商，未自动交易", text)
 
-    def test_show_ai_briefing_handles_llm_failure_without_crashing(self) -> None:
-        _, portfolio_path, watchlist_path = self.make_files()
+    def test_build_ai_briefing_markdown_contains_required_sections(self) -> None:
+        markdown = build_ai_briefing_markdown(
+            ai_result(),
+            generated_at=datetime(2026, 6, 23, 9, 30, 0),
+        )
 
-        class FailingLLMClient:
-            def generate_json(self, prompt: str) -> dict[str, str]:
-                raise LLMClientError("fake llm failure")
+        self.assertIn("# AI 每日简报", markdown)
+        self.assertIn("生成时间: 2026-06-23T09:30:00", markdown)
+        self.assertIn("数据源说明", markdown)
+        self.assertIn("## 账户摘要", markdown)
+        self.assertIn("## 持仓分析", markdown)
+        self.assertIn("## 观察池分析", markdown)
+        self.assertIn("## 风险提示", markdown)
+        self.assertIn("## 今日操作建议", markdown)
 
-        output = io.StringIO()
-        with redirect_stdout(output):
-            result = show_ai_briefing(
-                portfolio_path,
-                watchlist_path,
-                price_provider=FailingPriceProvider(),
-                news_provider=EmptyNewsProvider(),
-                llm_client=FailingLLMClient(),
+    def test_save_ai_briefing_report_creates_reports_dir_and_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+            saved_path = save_ai_briefing_report(
+                ai_result(),
+                reports_dir=reports_dir,
+                generated_at=datetime(2026, 6, 23, 9, 30, 0),
             )
 
-        text = output.getvalue()
-        self.assertFalse(result)
-        self.assertIn("AI 简报生成失败", text)
-        self.assertIn("fake llm failure", text)
-        self.assertIn("只读 AI 简报", text)
-        self.assertNotIn("Traceback", text)
+            self.assertEqual(
+                saved_path,
+                reports_dir / "2026-06-23-ai-briefing.md",
+            )
+            self.assertTrue(saved_path.is_file())
+            text = saved_path.read_text(encoding="utf-8")
+            self.assertIn("账户摘要内容", text)
+            self.assertIn("数据源说明", text)
+
+    def test_save_ai_briefing_report_appends_timestamp_when_file_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+            reports_dir.mkdir()
+            existing = reports_dir / "2026-06-23-ai-briefing.md"
+            existing.write_text("old report", encoding="utf-8")
+
+            saved_path = save_ai_briefing_report(
+                ai_result(),
+                reports_dir=reports_dir,
+                generated_at=datetime(2026, 6, 23, 9, 30, 5),
+            )
+
+            self.assertEqual(
+                saved_path,
+                reports_dir / "2026-06-23-ai-briefing-093005.md",
+            )
+            self.assertEqual(existing.read_text(encoding="utf-8"), "old report")
+            self.assertTrue(saved_path.is_file())
+
+    def test_show_ai_briefing_save_writes_report_after_success(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+
+            class FakeLLMClient:
+                def generate_json(self, prompt: str) -> dict[str, str]:
+                    return ai_result()
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = show_ai_briefing(
+                    portfolio_path,
+                    watchlist_path,
+                    price_provider=FailingPriceProvider(),
+                    news_provider=EmptyNewsProvider(),
+                    llm_client=FakeLLMClient(),
+                    save_report=True,
+                    reports_dir=reports_dir,
+                )
+
+            text = output.getvalue()
+            self.assertTrue(result)
+            self.assertIn("已保存 Markdown 报告", text)
+            files = list(reports_dir.glob("*-ai-briefing*.md"))
+            self.assertEqual(len(files), 1)
+            self.assertIn("账户摘要内容", files[0].read_text(encoding="utf-8"))
+
+    def test_show_ai_briefing_handles_llm_failure_without_crashing(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+
+            class FailingLLMClient:
+                def generate_json(self, prompt: str) -> dict[str, str]:
+                    raise LLMClientError("fake llm failure")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = show_ai_briefing(
+                    portfolio_path,
+                    watchlist_path,
+                    price_provider=FailingPriceProvider(),
+                    news_provider=EmptyNewsProvider(),
+                    llm_client=FailingLLMClient(),
+                    save_report=True,
+                    reports_dir=reports_dir,
+                )
+
+            text = output.getvalue()
+            self.assertFalse(result)
+            self.assertIn("AI 简报生成失败", text)
+            self.assertIn("fake llm failure", text)
+            self.assertIn("只读 AI 简报", text)
+            self.assertNotIn("Traceback", text)
+            self.assertFalse(reports_dir.exists())
 
 
 class FailingPriceProvider:
@@ -281,6 +374,16 @@ class FailingPriceProvider:
 class EmptyNewsProvider:
     def get_news(self, symbol: str, limit: int = 3) -> list[NewsRow]:
         return []
+
+
+def ai_result() -> dict[str, str]:
+    return {
+        "account_summary": "账户摘要内容",
+        "portfolio_analysis": "持仓分析内容",
+        "watchlist_analysis": "观察池分析内容",
+        "risk_warning": "风险提示内容",
+        "action_items": "今日操作建议内容",
+    }
 
 
 if __name__ == "__main__":
