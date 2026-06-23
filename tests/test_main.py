@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
 
@@ -88,12 +89,14 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             patch.object(main, "get_portfolio_snapshot", wraps=main.get_portfolio_snapshot) as service,
             patch.object(main, "run_script") as run_script,
             patch.object(main.subprocess, "run") as subprocess_run,
+            patch.object(main, "YFinancePriceProvider") as provider_class,
         ):
             output = self.run_main("portfolio", "--portfolio-file", str(path))
 
         service.assert_called_once_with(str(path))
         run_script.assert_not_called()
         subprocess_run.assert_not_called()
+        provider_class.assert_not_called()
         self.assertIn("未访问网络", output)
 
     def test_missing_file_returns_clear_error(self) -> None:
@@ -113,6 +116,54 @@ class MainPortfolioOverviewTests(unittest.TestCase):
                 service.assert_not_called()
                 self.assertIn("[已阻止]", output)
                 self.assertIn("没有连接券商、访问网络或修改持仓文件", output)
+
+    def test_portfolio_with_price_fetches_quotes_and_outputs_market_values(self) -> None:
+        _, path = self.make_portfolio_file()
+
+        class FakeProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                self.requested_symbol = symbol
+                return main.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("12.50"),
+                    previous_close=Decimal("12.00"),
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        provider = FakeProvider()
+        with patch.object(main, "YFinancePriceProvider", return_value=provider):
+            output = self.run_main("portfolio", "--portfolio-file", str(path), "--with-price")
+
+        self.assertEqual(provider.requested_symbol, "SOFI")
+        self.assertIn("当前价格", output)
+        self.assertIn("当前市值", output)
+        self.assertIn("未实现盈亏", output)
+        self.assertIn("盈亏率", output)
+        self.assertIn("fake", output)
+        self.assertIn("2026-06-23T15:30:00Z", output)
+        self.assertIn("$12.50", output)
+        self.assertIn("$25.00", output)
+        self.assertIn("$5.00", output)
+        self.assertIn("+25.00%", output)
+        self.assertIn("已按 --with-price 请求行情", output)
+        self.assertNotIn("未访问网络", output)
+
+    def test_portfolio_with_price_keeps_positions_when_quote_fails(self) -> None:
+        _, path = self.make_portfolio_file()
+
+        class FailingProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                raise main.PriceProviderError("fake failure")
+
+        with patch.object(main, "YFinancePriceProvider", return_value=FailingProvider()):
+            output = self.run_main("portfolio", "--portfolio-file", str(path), "--with-price")
+
+        self.assertIn("SOFI", output)
+        self.assertIn("$       10.00", output)
+        self.assertIn("价格未知", output)
+        self.assertIn("[行情提示] SOFI 行情获取失败：fake failure", output)
+        self.assertNotIn("Traceback", output)
 
 
 if __name__ == "__main__":
