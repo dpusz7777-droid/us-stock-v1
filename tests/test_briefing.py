@@ -16,9 +16,12 @@ from ai_briefing import LLMClientError
 from briefing import (
     build_ai_briefing_markdown,
     build_briefing_data,
+    build_morning_markdown,
     save_ai_briefing_report,
+    save_morning_report,
     show_ai_briefing,
     show_briefing,
+    show_morning_briefing,
 )
 from market_info import NewsProviderError, NewsRow
 from price_provider import PriceProviderError, PriceQuote
@@ -365,6 +368,138 @@ class BriefingTests(unittest.TestCase):
             self.assertNotIn("Traceback", text)
             self.assertFalse(reports_dir.exists())
 
+    def test_show_morning_briefing_outputs_required_sections(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+
+        class FakeLLMClient:
+            def generate_json(self, prompt: str) -> dict[str, str]:
+                self.prompt = prompt
+                return morning_result()
+
+        client = FakeLLMClient()
+        output = io.StringIO()
+        with redirect_stdout(output):
+            result = show_morning_briefing(
+                portfolio_path,
+                watchlist_path,
+                price_provider=FailingPriceProvider(),
+                news_provider=EmptyNewsProvider(),
+                llm_client=client,
+            )
+
+        text = output.getvalue()
+        self.assertTrue(result)
+        self.assertIn("今日盘前简报", text)
+        self.assertIn("账户摘要", text)
+        self.assertIn("持仓分析", text)
+        self.assertIn("市场热点", text)
+        self.assertIn("观察池分析", text)
+        self.assertIn("今日财报", text)
+        self.assertIn("风险提示", text)
+        self.assertIn("今日操作建议", text)
+        self.assertIn("只读盘前简报：未修改文件，未连接券商，未自动交易", text)
+        self.assertIn("market_hotspots", client.prompt)
+
+    def test_build_morning_markdown_contains_required_sections(self) -> None:
+        markdown = build_morning_markdown(
+            morning_result(),
+            generated_at=datetime(2026, 6, 23, 8, 0, 0),
+        )
+
+        self.assertIn("# 今日盘前简报", markdown)
+        self.assertIn("生成时间: 2026-06-23T08:00:00", markdown)
+        self.assertIn("数据源说明", markdown)
+        self.assertIn("## 账户摘要", markdown)
+        self.assertIn("## 持仓分析", markdown)
+        self.assertIn("## 市场热点", markdown)
+        self.assertIn("## 观察池分析", markdown)
+        self.assertIn("## 今日财报", markdown)
+        self.assertIn("## 风险提示", markdown)
+        self.assertIn("## 今日操作建议", markdown)
+
+    def test_save_morning_report_uses_morning_filename(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+            saved_path = save_morning_report(
+                morning_result(),
+                reports_dir=reports_dir,
+                generated_at=datetime(2026, 6, 23, 8, 0, 0),
+            )
+
+            self.assertEqual(saved_path, reports_dir / "2026-06-23-morning.md")
+            self.assertTrue(saved_path.is_file())
+            self.assertIn("市场热点内容", saved_path.read_text(encoding="utf-8"))
+
+    def test_save_morning_report_appends_timestamp_when_file_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+            reports_dir.mkdir()
+            existing = reports_dir / "2026-06-23-morning.md"
+            existing.write_text("old report", encoding="utf-8")
+
+            saved_path = save_morning_report(
+                morning_result(),
+                reports_dir=reports_dir,
+                generated_at=datetime(2026, 6, 23, 8, 0, 5),
+            )
+
+            self.assertEqual(saved_path, reports_dir / "2026-06-23-morning-080005.md")
+            self.assertEqual(existing.read_text(encoding="utf-8"), "old report")
+
+    def test_show_morning_briefing_save_writes_report_after_success(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+
+            class FakeLLMClient:
+                def generate_json(self, prompt: str) -> dict[str, str]:
+                    return morning_result()
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = show_morning_briefing(
+                    portfolio_path,
+                    watchlist_path,
+                    price_provider=FailingPriceProvider(),
+                    news_provider=EmptyNewsProvider(),
+                    llm_client=FakeLLMClient(),
+                    save_report=True,
+                    reports_dir=reports_dir,
+                )
+
+            self.assertTrue(result)
+            self.assertIn("已保存 Markdown 报告", output.getvalue())
+            files = list(reports_dir.glob("*-morning*.md"))
+            self.assertEqual(len(files), 1)
+
+    def test_show_morning_briefing_handles_llm_failure_without_writing_report(self) -> None:
+        _, portfolio_path, watchlist_path = self.make_files()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            reports_dir = Path(temp_dir) / "reports"
+
+            class FailingLLMClient:
+                def generate_json(self, prompt: str) -> dict[str, str]:
+                    raise LLMClientError("fake llm failure")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = show_morning_briefing(
+                    portfolio_path,
+                    watchlist_path,
+                    price_provider=FailingPriceProvider(),
+                    news_provider=EmptyNewsProvider(),
+                    llm_client=FailingLLMClient(),
+                    save_report=True,
+                    reports_dir=reports_dir,
+                )
+
+            text = output.getvalue()
+            self.assertFalse(result)
+            self.assertIn("盘前简报生成失败", text)
+            self.assertIn("fake llm failure", text)
+            self.assertIn("只读盘前简报", text)
+            self.assertFalse(reports_dir.exists())
+
 
 class FailingPriceProvider:
     def get_quote(self, symbol: str) -> PriceQuote:
@@ -381,6 +516,18 @@ def ai_result() -> dict[str, str]:
         "account_summary": "账户摘要内容",
         "portfolio_analysis": "持仓分析内容",
         "watchlist_analysis": "观察池分析内容",
+        "risk_warning": "风险提示内容",
+        "action_items": "今日操作建议内容",
+    }
+
+
+def morning_result() -> dict[str, str]:
+    return {
+        "account_summary": "账户摘要内容",
+        "portfolio_analysis": "持仓分析内容",
+        "market_hotspots": "市场热点内容",
+        "watchlist_analysis": "观察池分析内容",
+        "earnings_today": "今日财报内容",
         "risk_warning": "风险提示内容",
         "action_items": "今日操作建议内容",
     }

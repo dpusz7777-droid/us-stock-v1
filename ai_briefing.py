@@ -23,6 +23,16 @@ AI_BRIEFING_FIELDS = (
     "action_items",
 )
 
+MORNING_BRIEFING_FIELDS = (
+    "account_summary",
+    "portfolio_analysis",
+    "market_hotspots",
+    "watchlist_analysis",
+    "earnings_today",
+    "risk_warning",
+    "action_items",
+)
+
 
 class LLMClientError(Exception):
     """LLM 客户端异常。"""
@@ -127,11 +137,48 @@ def build_ai_prompt(data: Mapping[str, Any]) -> str:
     )
 
 
+def build_morning_prompt(data: Mapping[str, Any]) -> str:
+    """构建盘前简报 prompt，要求返回固定 JSON schema。"""
+
+    data_json = json.dumps(data, ensure_ascii=False, indent=2, default=str)
+    return (
+        "请基于下面的只读美股数据，生成中文盘前简报。\n"
+        "用户是投资新手，请使用稳健、保守、易懂的表达。\n"
+        "重点关注开盘前需要人工复核的账户、持仓、新闻热点、观察池、财报和风险。\n"
+        "禁止给出自动交易指令，禁止承诺收益，禁止要求系统买入或卖出。\n"
+        "只能给出需要人工复核的观察建议。\n\n"
+        "必须只返回 JSON 对象，且字段必须完全为：\n"
+        "{\n"
+        '  "account_summary": "",\n'
+        '  "portfolio_analysis": "",\n'
+        '  "market_hotspots": "",\n'
+        '  "watchlist_analysis": "",\n'
+        '  "earnings_today": "",\n'
+        '  "risk_warning": "",\n'
+        '  "action_items": ""\n'
+        "}\n\n"
+        "盘前数据：\n"
+        f"{data_json}"
+    )
+
+
 def validate_ai_briefing_result(result: Mapping[str, Any]) -> dict[str, str]:
     """校验并标准化 AI 返回 JSON。"""
 
     normalized: dict[str, str] = {}
     for field in AI_BRIEFING_FIELDS:
+        value = result.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise AIBriefingError(f"AI 返回 JSON 缺少有效字段：{field}")
+        normalized[field] = value.strip()
+    return normalized
+
+
+def validate_morning_briefing_result(result: Mapping[str, Any]) -> dict[str, str]:
+    """校验并标准化盘前简报 JSON。"""
+
+    normalized: dict[str, str] = {}
+    for field in MORNING_BRIEFING_FIELDS:
         value = result.get(field)
         if not isinstance(value, str) or not value.strip():
             raise AIBriefingError(f"AI 返回 JSON 缺少有效字段：{field}")
@@ -156,3 +203,22 @@ def generate_ai_briefing(
     except Exception as exc:
         raise LLMClientError(f"LLM 调用失败：{exc}") from exc
     return validate_ai_briefing_result(result)
+
+
+def generate_morning_briefing(
+    data: Mapping[str, Any],
+    client: LLMClient | None = None,
+) -> dict[str, str]:
+    """生成并校验 AI 盘前简报 JSON。"""
+
+    llm_client = client or DeepSeekClient(
+        base_url=os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    )
+    prompt = build_morning_prompt(data)
+    try:
+        result = llm_client.generate_json(prompt)
+    except LLMClientError:
+        raise
+    except Exception as exc:
+        raise LLMClientError(f"LLM 调用失败：{exc}") from exc
+    return validate_morning_briefing_result(result)

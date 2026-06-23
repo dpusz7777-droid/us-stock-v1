@@ -10,7 +10,13 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from ai_briefing import LLMClient, LLMClientError, AIBriefingError, generate_ai_briefing
+from ai_briefing import (
+    LLMClient,
+    LLMClientError,
+    AIBriefingError,
+    generate_ai_briefing,
+    generate_morning_briefing,
+)
 from market_info import (
     DEFAULT_SCHEMA_PORTFOLIO_FILE,
     DEFAULT_WATCHLIST_FILE,
@@ -385,17 +391,18 @@ def build_ai_briefing_markdown(
 def _next_report_path(
     reports_dir: str | Path,
     generated_at: datetime,
+    report_slug: str = "ai-briefing",
 ) -> Path:
     report_dir = Path(reports_dir)
     date_text = generated_at.strftime("%Y-%m-%d")
-    base_path = report_dir / f"{date_text}-ai-briefing.md"
+    base_path = report_dir / f"{date_text}-{report_slug}.md"
     if not base_path.exists():
         return base_path
     timestamp = generated_at.strftime("%H%M%S")
-    candidate = report_dir / f"{date_text}-ai-briefing-{timestamp}.md"
+    candidate = report_dir / f"{date_text}-{report_slug}-{timestamp}.md"
     counter = 2
     while candidate.exists():
-        candidate = report_dir / f"{date_text}-ai-briefing-{timestamp}-{counter}.md"
+        candidate = report_dir / f"{date_text}-{report_slug}-{timestamp}-{counter}.md"
         counter += 1
     return candidate
 
@@ -411,7 +418,7 @@ def save_ai_briefing_report(
     timestamp = generated_at or datetime.now().astimezone()
     report_dir = Path(reports_dir)
     report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = _next_report_path(report_dir, timestamp)
+    report_path = _next_report_path(report_dir, timestamp, "ai-briefing")
     report_path.write_text(
         build_ai_briefing_markdown(result, generated_at=timestamp),
         encoding="utf-8",
@@ -447,6 +454,109 @@ def show_ai_briefing(
     print_ai_briefing(result)
     if save_report:
         report_path = save_ai_briefing_report(result, reports_dir=reports_dir)
+        print(f"\n已保存 Markdown 报告: {report_path}")
+    return True
+
+
+def print_morning_briefing(result: dict[str, str]) -> None:
+    """输出盘前简报。"""
+
+    print("\n=== 今日盘前简报 ===")
+    print("\n账户摘要")
+    print(result["account_summary"])
+    print("\n持仓分析")
+    print(result["portfolio_analysis"])
+    print("\n市场热点")
+    print(result["market_hotspots"])
+    print("\n观察池分析")
+    print(result["watchlist_analysis"])
+    print("\n今日财报")
+    print(result["earnings_today"])
+    print("\n风险提示")
+    print(result["risk_warning"])
+    print("\n今日操作建议")
+    print(result["action_items"])
+    print("\n只读盘前简报：未修改文件，未连接券商，未自动交易。")
+
+
+def build_morning_markdown(
+    result: dict[str, str],
+    *,
+    generated_at: datetime | None = None,
+) -> str:
+    """生成盘前简报 Markdown。"""
+
+    timestamp = (generated_at or datetime.now().astimezone()).replace(microsecond=0)
+    return (
+        "# 今日盘前简报\n\n"
+        f"生成时间: {timestamp.isoformat()}\n\n"
+        "数据源说明: 账户与持仓来自 portfolio_migrated_candidate.json，观察池来自 "
+        "watchlist.json，行情和新闻来自 Yahoo Finance/yfinance，财报信息来自本地静态结构，"
+        "AI 分析来自 DeepSeek 兼容 LLMClient。本文只供人工复核，不构成自动交易指令。\n\n"
+        "## 账户摘要\n\n"
+        f"{result['account_summary']}\n\n"
+        "## 持仓分析\n\n"
+        f"{result['portfolio_analysis']}\n\n"
+        "## 市场热点\n\n"
+        f"{result['market_hotspots']}\n\n"
+        "## 观察池分析\n\n"
+        f"{result['watchlist_analysis']}\n\n"
+        "## 今日财报\n\n"
+        f"{result['earnings_today']}\n\n"
+        "## 风险提示\n\n"
+        f"{result['risk_warning']}\n\n"
+        "## 今日操作建议\n\n"
+        f"{result['action_items']}\n"
+    )
+
+
+def save_morning_report(
+    result: dict[str, str],
+    *,
+    reports_dir: str | Path = DEFAULT_REPORTS_DIR,
+    generated_at: datetime | None = None,
+) -> Path:
+    """保存盘前简报 Markdown；不会覆盖已有报告。"""
+
+    timestamp = generated_at or datetime.now().astimezone()
+    report_dir = Path(reports_dir)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    report_path = _next_report_path(report_dir, timestamp, "morning")
+    report_path.write_text(
+        build_morning_markdown(result, generated_at=timestamp),
+        encoding="utf-8",
+    )
+    return report_path
+
+
+def show_morning_briefing(
+    portfolio_path: str | Path = DEFAULT_SCHEMA_PORTFOLIO_FILE,
+    watchlist_path: str | Path = DEFAULT_WATCHLIST_FILE,
+    *,
+    price_provider: PriceProvider | None = None,
+    news_provider: NewsProvider | None = None,
+    llm_client: LLMClient | None = None,
+    save_report: bool = False,
+    reports_dir: str | Path = DEFAULT_REPORTS_DIR,
+) -> bool:
+    """输出盘前 AI 简报；只读、不交易。"""
+
+    data = build_briefing_data(
+        portfolio_path,
+        watchlist_path,
+        price_provider=price_provider,
+        news_provider=news_provider,
+    )
+    try:
+        result = generate_morning_briefing(data, client=llm_client)
+    except (LLMClientError, AIBriefingError) as exc:
+        print(f"\n[错误] 盘前简报生成失败：{exc}")
+        print("只读盘前简报：未修改文件，未连接券商，未自动交易。")
+        return False
+
+    print_morning_briefing(result)
+    if save_report:
+        report_path = save_morning_report(result, reports_dir=reports_dir)
         print(f"\n已保存 Markdown 报告: {report_path}")
     return True
 
