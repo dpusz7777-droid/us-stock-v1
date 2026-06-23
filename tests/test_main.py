@@ -340,6 +340,66 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             ["--watchlist", "watchlist.json"],
         )
 
+    def test_news_command_outputs_placeholder_rows_without_subprocess(self) -> None:
+        _, portfolio_path = self.make_portfolio_file()
+        watchlist_path = portfolio_path.with_name("watchlist.json")
+        watchlist_path.write_text(
+            json.dumps({"symbols": ["NVDA", "AAPL"]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        with (
+            patch.object(main, "run_script") as run_script,
+            patch.object(main.subprocess, "run") as subprocess_run,
+            patch.object(main, "YFinancePriceProvider") as provider_class,
+        ):
+            output = self.run_main(
+                "news",
+                "--portfolio-file",
+                str(portfolio_path),
+                "--watchlist",
+                str(watchlist_path),
+            )
+
+        run_script.assert_not_called()
+        subprocess_run.assert_not_called()
+        provider_class.assert_not_called()
+        self.assertIn("股票新闻摘要", output)
+        self.assertIn("SOFI", output)
+        self.assertIn("NVDA", output)
+        self.assertIn("headline", output)
+        self.assertIn("只读新闻：未修改文件，未连接券商，未自动交易", output)
+
+    def test_earnings_command_outputs_mock_rows_without_subprocess(self) -> None:
+        _, portfolio_path = self.make_portfolio_file()
+        watchlist_path = portfolio_path.with_name("watchlist.json")
+        watchlist_path.write_text(
+            json.dumps({"symbols": ["NVDA", "AAPL"]}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+        with (
+            patch.object(main, "run_script") as run_script,
+            patch.object(main.subprocess, "run") as subprocess_run,
+            patch.object(main, "YFinancePriceProvider") as provider_class,
+        ):
+            output = self.run_main(
+                "earnings",
+                "--portfolio-file",
+                str(portfolio_path),
+                "--watchlist",
+                str(watchlist_path),
+            )
+
+        run_script.assert_not_called()
+        subprocess_run.assert_not_called()
+        provider_class.assert_not_called()
+        self.assertIn("未来财报关注列表", output)
+        self.assertIn("SOFI", output)
+        self.assertIn("NVDA", output)
+        self.assertIn("earnings_date", output)
+        self.assertIn("只读财报：未修改文件，未连接券商，未自动交易", output)
+
 
 if __name__ == "__main__":
     unittest.main()

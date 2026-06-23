@@ -19,6 +19,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from price_provider import PriceProvider, PriceProviderError, PriceQuote, YFinancePriceProvider
+from market_info import show_earnings_overview, show_news_overview
 from portfolio_service import (
     PortfolioError,
     PortfolioState,
@@ -410,6 +411,32 @@ def main():
     p = sub.add_parser("screener", help="只读股票筛选")
     p.add_argument("--watchlist", help="watchlist JSON 文件路径")
 
+    # news
+    p = sub.add_parser("news", help="只读新闻摘要")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
+    p.add_argument(
+        "--watchlist",
+        default=str(ROOT / "watchlist.json"),
+        help="watchlist JSON 文件路径",
+    )
+
+    # earnings
+    p = sub.add_parser("earnings", help="只读财报关注")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
+    p.add_argument(
+        "--watchlist",
+        default=str(ROOT / "watchlist.json"),
+        help="watchlist JSON 文件路径",
+    )
+
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
     p.add_argument("--daily", action="store_true", help="每日简报")
@@ -479,6 +506,12 @@ def main():
         if args.watchlist:
             cmd_args += ["--watchlist", args.watchlist]
         run_script("screener.py", cmd_args)
+
+    elif args.command == "news":
+        show_news_overview(args.portfolio_file, args.watchlist)
+
+    elif args.command == "earnings":
+        show_earnings_overview(args.portfolio_file, args.watchlist)
 
     elif args.command == "monitor":
         cmd_args = ["--portfolio-file", args.portfolio_file]
