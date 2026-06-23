@@ -395,6 +395,9 @@ def main():
         help="Schema 1.1 持仓 JSON 文件路径",
     )
 
+    # screener
+    p = sub.add_parser("screener", help="只读股票筛选")
+
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
     p.add_argument("--daily", action="store_true", help="每日简报")
@@ -458,6 +461,9 @@ def main():
             show_daily_report(args.portfolio_file)
         else:
             print("请使用: python main.py report --daily")
+
+    elif args.command == "screener":
+        run_script("screener.py")
 
     elif args.command == "monitor":
         cmd_args = ["--portfolio-file", args.portfolio_file]

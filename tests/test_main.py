@@ -234,6 +234,12 @@ class MainPortfolioOverviewTests(unittest.TestCase):
 
         self.assertIn("请使用: python main.py report --daily", output)
 
+    def test_screener_routes_to_screener_script(self) -> None:
+        with patch.object(main, "run_script") as run_script:
+            self.run_main("screener")
+
+        run_script.assert_called_once_with("screener.py")
+
 
 if __name__ == "__main__":
     unittest.main()
