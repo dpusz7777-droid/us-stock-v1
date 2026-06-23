@@ -15,6 +15,7 @@
 import argparse
 import subprocess
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from price_provider import PriceProvider, PriceProviderError, PriceQuote, YFinancePriceProvider
@@ -23,10 +24,13 @@ from portfolio_service import (
     PortfolioState,
     apply_market_prices,
     get_portfolio_snapshot,
+    load_portfolio,
 )
 
 ROOT = Path(__file__).parent
 DEFAULT_SCHEMA_PORTFOLIO_FILE = ROOT / "portfolio_migrated_candidate.json"
+DEFAULT_STOP_LOSS_PCT = Decimal("8")
+DEFAULT_TARGET_PROFIT_PCT = Decimal("25")
 
 
 def run_script(name: str, args: list = None):
@@ -43,6 +47,36 @@ def _money_or_unknown(value) -> str:
 
 def _pct_or_unknown(value) -> str:
     return "价格未知" if value is None else f"{value:+.2f}%"
+
+
+def _to_decimal_setting(value, default: Decimal) -> Decimal:
+    if isinstance(value, bool) or value is None:
+        return default
+    try:
+        number = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return default
+    if number <= 0 or number > 100:
+        return default
+    return number
+
+
+def load_report_settings(path: str | Path) -> tuple[Decimal, Decimal]:
+    """读取日报使用的止损/止盈阈值。"""
+
+    try:
+        document = load_portfolio(path)
+    except PortfolioError:
+        return DEFAULT_STOP_LOSS_PCT, DEFAULT_TARGET_PROFIT_PCT
+    settings = document.get("settings")
+    if not isinstance(settings, dict):
+        settings = {}
+    return (
+        _to_decimal_setting(settings.get("stop_loss_pct"), DEFAULT_STOP_LOSS_PCT),
+        _to_decimal_setting(
+            settings.get("target_profit_pct"), DEFAULT_TARGET_PROFIT_PCT
+        ),
+    )
 
 
 def fetch_portfolio_quotes(
@@ -178,6 +212,141 @@ def show_portfolio_overview(
     return True
 
 
+def print_daily_report(
+    state: PortfolioState,
+    stop_loss_pct: Decimal,
+    target_profit_pct: Decimal,
+    *,
+    quotes: dict[str, PriceQuote] | None = None,
+    price_warnings: tuple[str, ...] = (),
+) -> None:
+    """输出每日持仓报告，只读、不交易。"""
+
+    quotes = quotes or {}
+    print("\n=== 每日持仓报告 ===")
+
+    print("\n[账户摘要]")
+    print(f"持仓数量: {len(state.positions)}")
+    print(f"持仓总成本: ${state.total_cost_basis:,.2f}")
+    print(f"当前市值: {_money_or_unknown(state.total_market_value)}")
+    print(f"未实现盈亏: {_money_or_unknown(state.total_unrealized_pnl)}")
+    if state.total_cost_basis:
+        report_pnl_pct = (
+            state.total_unrealized_pnl / state.total_cost_basis * Decimal("100")
+            if state.total_unrealized_pnl is not None
+            else None
+        )
+    else:
+        report_pnl_pct = None
+    print(f"盈亏率: {_pct_or_unknown(report_pnl_pct)}")
+    if state.cash_status == "unknown":
+        print("现金: 未知")
+        print("总资产: 无法计算（现金基线未知）")
+    else:
+        print(f"现金: {_money_or_unknown(state.cash)}")
+        print(f"总资产: {_money_or_unknown(state.total_equity)}")
+
+    print("\n[当前持仓列表]")
+    if not state.positions:
+        print("暂无持仓")
+    else:
+        print(
+            f"{'代码':>8} {'股数':>12} {'平均成本':>14} {'当前价格':>14} "
+            f"{'当前市值':>14} {'未实现盈亏':>14} {'盈亏率':>12}"
+        )
+        print(f"{'-' * 96}")
+        for symbol in sorted(state.positions):
+            position = state.positions[symbol]
+            print(
+                f"{position.symbol:>8} {str(position.shares):>12} "
+                f"${position.avg_cost:>12,.2f} "
+                f"{_money_or_unknown(position.last_price):>14} "
+                f"{_money_or_unknown(position.market_value):>14} "
+                f"{_money_or_unknown(position.unrealized_pnl):>14} "
+                f"{_pct_or_unknown(position.unrealized_pnl_pct):>12}"
+            )
+
+    print("\n[止盈/止损预警摘要]")
+    profit_alerts = []
+    stop_alerts = []
+    unknown_prices = []
+    for symbol in sorted(state.positions):
+        position = state.positions[symbol]
+        pnl_pct = position.unrealized_pnl_pct
+        if pnl_pct is None:
+            unknown_prices.append(symbol)
+        elif pnl_pct >= target_profit_pct:
+            profit_alerts.append((symbol, pnl_pct))
+        elif pnl_pct <= -stop_loss_pct:
+            stop_alerts.append((symbol, pnl_pct))
+
+    print(f"止盈阈值: +{target_profit_pct}%")
+    print(f"止损阈值: -{stop_loss_pct}%")
+    if profit_alerts:
+        for symbol, pnl_pct in profit_alerts:
+            print(f"达到止盈: {symbol} {_pct_or_unknown(pnl_pct)}")
+    else:
+        print("达到止盈: 无")
+    if stop_alerts:
+        for symbol, pnl_pct in stop_alerts:
+            print(f"达到止损: {symbol} {_pct_or_unknown(pnl_pct)}")
+    else:
+        print("达到止损: 无")
+    if unknown_prices:
+        print("价格未知: " + ", ".join(unknown_prices))
+
+    print("\n[今日关注事项]")
+    if price_warnings:
+        for warning in price_warnings:
+            print(f"- 行情检查: {warning}")
+    if stop_alerts:
+        print("- 风险控制: 有持仓达到止损线，请人工复核。")
+    if profit_alerts:
+        print("- 收益管理: 有持仓达到止盈线，请人工复核。")
+    if state.cash_status == "unknown":
+        print("- 账户数据: 现金基线未知，总资产暂无法完整计算。")
+    if not price_warnings and not stop_alerts and not profit_alerts:
+        print("- 暂无重大预警，继续观察持仓与市场波动。")
+
+    for warning in state.warnings:
+        print(f"[提示] {warning}")
+    print("\n只读日报：未修改文件，未连接券商，未自动交易。")
+
+
+def show_daily_report(
+    path: str | Path,
+    *,
+    provider: PriceProvider | None = None,
+) -> bool:
+    """生成每日持仓报告。"""
+
+    try:
+        state = get_portfolio_snapshot(path)
+    except PortfolioError as exc:
+        print(f"\n[错误] 日报无法读取持仓：{exc}")
+        return False
+
+    stop_loss_pct, target_profit_pct = load_report_settings(path)
+    quotes: dict[str, PriceQuote] = {}
+    price_warnings: tuple[str, ...] = ()
+    if state.positions:
+        prices, quotes, price_warnings = fetch_portfolio_quotes(
+            sorted(state.positions),
+            provider=provider,
+        )
+        if prices:
+            state = apply_market_prices(state, prices)
+
+    print_daily_report(
+        state,
+        stop_loss_pct,
+        target_profit_pct,
+        quotes=quotes,
+        price_warnings=price_warnings,
+    )
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="📊 美股研究系统 v1.0")
     sub = parser.add_subparsers(dest="command")
@@ -216,6 +385,15 @@ def main():
 
     # init
     p = sub.add_parser("init", help="初始化系统配置")
+
+    # report
+    p = sub.add_parser("report", help="生成报告")
+    p.add_argument("--daily", action="store_true", help="每日持仓报告")
+    p.add_argument(
+        "--portfolio-file",
+        default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
+        help="Schema 1.1 持仓 JSON 文件路径",
+    )
 
     # monitor
     p = sub.add_parser("monitor", help="持仓监控看板")
@@ -274,6 +452,12 @@ def main():
         print(f"  python main.py rank             评分排序")
         print(f"  python main.py portfolio        查看持仓")
         print(f"  python main.py watchlist        观察名单")
+
+    elif args.command == "report":
+        if args.daily:
+            show_daily_report(args.portfolio_file)
+        else:
+            print("请使用: python main.py report --daily")
 
     elif args.command == "monitor":
         cmd_args = ["--portfolio-file", args.portfolio_file]

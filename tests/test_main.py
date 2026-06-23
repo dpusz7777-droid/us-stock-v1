@@ -174,6 +174,66 @@ class MainPortfolioOverviewTests(unittest.TestCase):
             ["--portfolio-file", str(main.DEFAULT_SCHEMA_PORTFOLIO_FILE), "--alert"],
         )
 
+    def test_daily_report_outputs_summary_positions_alerts_and_focus_items(self) -> None:
+        _, path = self.make_portfolio_file()
+
+        class FakeProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                return main.PriceQuote(
+                    symbol=symbol,
+                    price=Decimal("12.50"),
+                    previous_close=Decimal("12.00"),
+                    source="fake",
+                    price_as_of="2026-06-23T15:30:00Z",
+                )
+
+        with (
+            patch.object(main, "YFinancePriceProvider", return_value=FakeProvider()) as provider_class,
+            patch.object(main, "run_script") as run_script,
+            patch.object(main.subprocess, "run") as subprocess_run,
+        ):
+            output = self.run_main("report", "--daily", "--portfolio-file", str(path))
+
+        provider_class.assert_called_once()
+        run_script.assert_not_called()
+        subprocess_run.assert_not_called()
+        self.assertIn("每日持仓报告", output)
+        self.assertIn("[账户摘要]", output)
+        self.assertIn("当前市值: $25.00", output)
+        self.assertIn("未实现盈亏: $5.00", output)
+        self.assertIn("盈亏率: +25.00%", output)
+        self.assertIn("[当前持仓列表]", output)
+        self.assertIn("SOFI", output)
+        self.assertIn("$12.50", output)
+        self.assertIn("[止盈/止损预警摘要]", output)
+        self.assertIn("达到止盈: SOFI +25.00%", output)
+        self.assertIn("达到止损: 无", output)
+        self.assertIn("[今日关注事项]", output)
+        self.assertIn("收益管理", output)
+        self.assertIn("只读日报：未修改文件，未连接券商，未自动交易", output)
+
+    def test_daily_report_keeps_running_when_price_fetch_fails(self) -> None:
+        _, path = self.make_portfolio_file()
+
+        class FailingProvider:
+            def get_quote(self, symbol: str) -> main.PriceQuote:
+                raise main.PriceProviderError("fake failure")
+
+        with patch.object(main, "YFinancePriceProvider", return_value=FailingProvider()):
+            output = self.run_main("report", "--daily", "--portfolio-file", str(path))
+
+        self.assertIn("每日持仓报告", output)
+        self.assertIn("SOFI", output)
+        self.assertIn("价格未知", output)
+        self.assertIn("行情检查: SOFI 行情获取失败：fake failure", output)
+        self.assertIn("只读日报", output)
+        self.assertNotIn("Traceback", output)
+
+    def test_report_without_daily_prints_usage_hint(self) -> None:
+        output = self.run_main("report")
+
+        self.assertIn("请使用: python main.py report --daily", output)
+
 
 if __name__ == "__main__":
     unittest.main()
