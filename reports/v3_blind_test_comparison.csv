@@ -1,0 +1,5 @@
+config,return,dd,trades,avg_hold_days,win_rate,costs,learning_adjs
+original_no_cooldown,389.26,9.48,1013,1.2,0.6828,1779.7,0
+calibrated_full,178.19,9.28,610,2.0,0.6064,1261.48,1197
+calibrated_no_learning,178.19,9.28,610,2.0,0.6064,1261.48,0
+calibrated_no_opt_learn,178.19,9.28,610,2.0,0.6064,1261.48,0

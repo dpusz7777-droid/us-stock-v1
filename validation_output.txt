@@ -1,0 +1,9 @@
+bull       regime=BULL       strat=MOMENTUM        cap=NORMAL   cash=$ 100000.00 status=PASS     errors=0 mods=13/13
+bear       regime=BEAR       strat=DEFENSIVE       cap=NORMAL   cash=$ 100000.00 status=PASS     errors=0 mods=13/13
+choppy     regime=CHOPPY     strat=MEAN_REVERSION  cap=NORMAL   cash=$ 100000.00 status=PASS     errors=0 mods=13/13
+high-risk  regime=HIGH_RISK  strat=DEFENSIVE       cap=NORMAL   cash=$ 100000.00 status=PASS     errors=0 mods=13/13
+
+Report saved. All modules: False
+All cash>=0: True
+All pos>=0:  True
+All sim:     True

@@ -1,0 +1,26 @@
+{
+  "bull": {
+    "status": "PASS", "regime": "BULL", "strategy": "MOMENTUM", "cap_mode": "NORMAL",
+    "cash": 100000.0, "equity": 100000.0, "errors": 0, "modules_ok": true,
+    "cash_ok": true, "pos_ok": true, "sim_only": true,
+    "decisions": ["HOLD:AAPL", "HOLD:MSFT"]
+  },
+  "bear": {
+    "status": "PASS", "regime": "BEAR", "strategy": "DEFENSIVE", "cap_mode": "NORMAL",
+    "cash": 100000.0, "equity": 100000.0, "errors": 0, "modules_ok": true,
+    "cash_ok": true, "pos_ok": true, "sim_only": true,
+    "decisions": ["HOLD:AAPL", "HOLD:MSFT"]
+  },
+  "choppy": {
+    "status": "PASS", "regime": "CHOPPY", "strategy": "MEAN_REVERSION", "cap_mode": "NORMAL",
+    "cash": 100000.0, "equity": 100000.0, "errors": 0, "modules_ok": true,
+    "cash_ok": true, "pos_ok": true, "sim_only": true,
+    "decisions": ["HOLD:AAPL", "HOLD:MSFT"]
+  },
+  "high-risk": {
+    "status": "PASS", "regime": "HIGH_RISK", "strategy": "DEFENSIVE", "cap_mode": "NORMAL",
+    "cash": 100000.0, "equity": 100000.0, "errors": 0, "modules_ok": true,
+    "cash_ok": true, "pos_ok": true, "sim_only": true,
+    "decisions": ["HOLD:AAPL", "HOLD:MSFT"]
+  }
+}

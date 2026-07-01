@@ -1,0 +1,360 @@
+{
+  "analysis_period": "2025-06-30 to 2026-06-29",
+  "gap_summary": {
+    "total_gap_pct": 19.36,
+    "estimated_costs_pct": 0.0,
+    "buy_hold": {
+      "ret": 48.399010125660894,
+      "dd": 16.54,
+      "max_cons_loss": 6,
+      "ann_vol": 24.327285418441594,
+      "calmar": 2.93
+    },
+    "t2": {
+      "ret": 29.04,
+      "dd": 13.55,
+      "trades": 60,
+      "hold": 4.2,
+      "win": 0.5
+    }
+  },
+  "exit_reasons": {
+    "peak_drop_12pct": 10,
+    "below_sma50_3d": 11,
+    "sma20_below_sma50": 7
+  },
+  "rolling_validation": [
+    {
+      "window": "2021-07-01~2021-12-29",
+      "t2_ret": -1.61,
+      "bh_ret": 14.22,
+      "t2_dd": 7.02,
+      "trades": 40,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2021-09-30~2022-03-30",
+      "t2_ret": -4.05,
+      "bh_ret": 1.5,
+      "t2_dd": 11.23,
+      "trades": 63,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2021-12-30~2022-06-30",
+      "t2_ret": -6.89,
+      "bh_ret": -31.76,
+      "t2_dd": 8.46,
+      "trades": 80,
+      "t2_better": true,
+      "dd_lower": true
+    },
+    {
+      "window": "2022-03-31~2022-09-29",
+      "t2_ret": -7.54,
+      "bh_ret": -26.75,
+      "t2_dd": 7.55,
+      "trades": 69,
+      "t2_better": true,
+      "dd_lower": true
+    },
+    {
+      "window": "2022-07-01~2022-12-29",
+      "t2_ret": -6.19,
+      "bh_ret": -7.61,
+      "t2_dd": 9.62,
+      "trades": 65,
+      "t2_better": true,
+      "dd_lower": true
+    },
+    {
+      "window": "2022-09-30~2023-03-31",
+      "t2_ret": 14.26,
+      "bh_ret": 23.86,
+      "t2_dd": 8.71,
+      "trades": 73,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2022-12-30~2023-07-03",
+      "t2_ret": 35.64,
+      "bh_ret": 47.92,
+      "t2_dd": 8.88,
+      "trades": 55,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2023-04-03~2023-10-02",
+      "t2_ret": 6.64,
+      "bh_ret": 16.13,
+      "t2_dd": 9.33,
+      "trades": 48,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2023-07-05~2024-01-02",
+      "t2_ret": -7.47,
+      "bh_ret": 10.72,
+      "t2_dd": 8.11,
+      "trades": 41,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2023-10-03~2024-04-03",
+      "t2_ret": 15.76,
+      "bh_ret": 38.82,
+      "t2_dd": 10.06,
+      "trades": 37,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2024-01-03~2024-07-03",
+      "t2_ret": 1.45,
+      "bh_ret": 34.35,
+      "t2_dd": 17.39,
+      "trades": 52,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2024-04-04~2024-10-02",
+      "t2_ret": -8.16,
+      "bh_ret": 12.63,
+      "t2_dd": 15.82,
+      "trades": 64,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2024-07-05~2025-01-02",
+      "t2_ret": 8.54,
+      "bh_ret": 5.69,
+      "t2_dd": 4.89,
+      "trades": 47,
+      "t2_better": true,
+      "dd_lower": true
+    },
+    {
+      "window": "2024-10-03~2025-04-04",
+      "t2_ret": 1.11,
+      "bh_ret": -13.48,
+      "t2_dd": 6.58,
+      "trades": 47,
+      "t2_better": true,
+      "dd_lower": true
+    },
+    {
+      "window": "2025-01-03~2025-07-08",
+      "t2_ret": 8.66,
+      "bh_ret": 9.88,
+      "t2_dd": 12.8,
+      "trades": 65,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2025-04-07~2025-10-06",
+      "t2_ret": 31.66,
+      "bh_ret": 56.07,
+      "t2_dd": 8.98,
+      "trades": 47,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2025-07-09~2026-01-06",
+      "t2_ret": 0.46,
+      "bh_ret": 13.97,
+      "t2_dd": 8.87,
+      "trades": 27,
+      "t2_better": false,
+      "dd_lower": true
+    },
+    {
+      "window": "2025-10-07~2026-04-08",
+      "t2_ret": -7.09,
+      "bh_ret": -2.12,
+      "t2_dd": 12.41,
+      "trades": 32,
+      "t2_better": false,
+      "dd_lower": true
+    }
+  ],
+  "strategy_purpose": "D. 暂无稳定价值 — 收益和风险都没有稳定优势",
+  "stock_results": [
+    {
+      "sym": "NVDA",
+      "t2_ret": -3.12,
+      "bh_ret": 1.3810397021227513e+20,
+      "gap": -1.3810397021227513e+20,
+      "t2_dd": 4.28,
+      "bh_dd": 3.42,
+      "trades": 12,
+      "hold": 20.9,
+      "exits": {
+        "below_sma50_3d": 1,
+        "sma20_below_sma50": 3,
+        "peak_drop_12pct": 2
+      }
+    },
+    {
+      "sym": "AAPL",
+      "t2_ret": 4.5,
+      "bh_ret": 2.1307477994338926e+27,
+      "gap": -2.1307477994338926e+27,
+      "t2_dd": 2.0,
+      "bh_dd": 3.31,
+      "trades": 6,
+      "hold": 41.8,
+      "exits": {
+        "below_sma50_3d": 3
+      }
+    },
+    {
+      "sym": "MSFT",
+      "t2_ret": -1.37,
+      "bh_ret": -100.0,
+      "gap": 98.63,
+      "t2_dd": 5.49,
+      "bh_dd": 100.0,
+      "trades": 8,
+      "hold": 31.4,
+      "exits": {
+        "sma20_below_sma50": 3,
+        "peak_drop_12pct": 1
+      }
+    },
+    {
+      "sym": "GOOGL",
+      "t2_ret": 7.28,
+      "bh_ret": 1.4846699217739706e+54,
+      "gap": -1.4846699217739706e+54,
+      "t2_dd": 5.98,
+      "bh_dd": 1.06,
+      "trades": 8,
+      "hold": 31.4,
+      "exits": {
+        "below_sma50_3d": 3,
+        "sma20_below_sma50": 1
+      }
+    },
+    {
+      "sym": "META",
+      "t2_ret": -2.47,
+      "bh_ret": -100.0,
+      "gap": 97.53,
+      "t2_dd": 9.39,
+      "bh_dd": 100.0,
+      "trades": 12,
+      "hold": 20.9,
+      "exits": {
+        "below_sma50_3d": 2,
+        "peak_drop_12pct": 1,
+        "sma20_below_sma50": 3
+      }
+    },
+    {
+      "sym": "AMZN",
+      "t2_ret": -2.04,
+      "bh_ret": 36067269.38,
+      "gap": -36067271.42,
+      "t2_dd": 3.09,
+      "bh_dd": 87.11,
+      "trades": 11,
+      "hold": 22.8,
+      "exits": {
+        "below_sma50_3d": 2,
+        "sma20_below_sma50": 3
+      }
+    },
+    {
+      "sym": "AMD",
+      "t2_ret": 19.01,
+      "bh_ret": 4.997731123429974e+55,
+      "gap": -4.997731123429974e+55,
+      "t2_dd": 12.31,
+      "bh_dd": 18.1,
+      "trades": 24,
+      "hold": 10.5,
+      "exits": {
+        "peak_drop_12pct": 4,
+        "sma20_below_sma50": 2,
+        "below_sma50_3d": 5
+      }
+    },
+    {
+      "sym": "AVGO",
+      "t2_ret": -1.42,
+      "bh_ret": 7.98204109280779e+26,
+      "gap": -7.98204109280779e+26,
+      "t2_dd": 9.14,
+      "bh_dd": 7.92,
+      "trades": 20,
+      "hold": 12.6,
+      "exits": {
+        "peak_drop_12pct": 3,
+        "below_sma50_3d": 2,
+        "sma20_below_sma50": 5
+      }
+    },
+    {
+      "sym": "TSM",
+      "t2_ret": 8.74,
+      "bh_ret": 1.379292108986006e+38,
+      "gap": -1.379292108986006e+38,
+      "t2_dd": 5.52,
+      "bh_dd": 0.8,
+      "trades": 9,
+      "hold": 27.9,
+      "exits": {
+        "below_sma50_3d": 2,
+        "peak_drop_12pct": 1,
+        "sma20_below_sma50": 1
+      }
+    },
+    {
+      "sym": "PLTR",
+      "t2_ret": 1.98,
+      "bh_ret": 2.824974396388835e+17,
+      "gap": -2.824974396388835e+17,
+      "t2_dd": 6.89,
+      "bh_dd": 74.92,
+      "trades": 31,
+      "hold": 8.1,
+      "exits": {
+        "peak_drop_12pct": 2,
+        "sma20_below_sma50": 8,
+        "below_sma50_3d": 4
+      }
+    },
+    {
+      "sym": "SPY",
+      "t2_ret": 0.0,
+      "bh_ret": 5393018517585.33,
+      "gap": -5393018517585.33,
+      "t2_dd": 0.0,
+      "bh_dd": 0.03,
+      "trades": 0,
+      "hold": 0,
+      "exits": {}
+    },
+    {
+      "sym": "QQQ",
+      "t2_ret": 0.72,
+      "bh_ret": 315994833136201.75,
+      "gap": -315994833136201.0,
+      "t2_dd": 3.57,
+      "bh_dd": 1.0,
+      "trades": 1,
+      "hold": 251.0,
+      "exits": {}
+    }
+  ]
+}

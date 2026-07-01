@@ -1,0 +1,159 @@
+{
+  "methodology": "Trend fix: uptrend holds SELL->HOLD, exits via peak_drop/sma50_cross/sma20_death",
+  "calibration_stage": "train 0-2 + val 2-1002 for T1/T2/T3 selection",
+  "blind_stage": "frozen params on 1002-1253",
+  "calibration_results": {
+    "T1(8%)": {
+      "final_equity": 116313.07,
+      "return": 16.31,
+      "dd": 18.01,
+      "trades": 490,
+      "peak": 119245.17,
+      "min": 86418.38,
+      "hold": 2.0,
+      "win": 0.4354,
+      "costs": 0,
+      "max_cons_loss": 8,
+      "exit_reasons": {
+        "peak_drop_8pct": 73,
+        "below_sma50_3d": 39,
+        "sma20_below_sma50": 97
+      }
+    },
+    "T2(12%)": {
+      "final_equity": 139731.72,
+      "return": 39.73,
+      "dd": 23.78,
+      "trades": 435,
+      "peak": 154255.63,
+      "min": 80819.52,
+      "hold": 2.3,
+      "win": 0.4783,
+      "costs": 0,
+      "max_cons_loss": 9,
+      "exit_reasons": {
+        "peak_drop_12pct": 40,
+        "below_sma50_3d": 59,
+        "sma20_below_sma50": 85
+      }
+    },
+    "T3(15%)": {
+      "final_equity": 135075.99,
+      "return": 35.08,
+      "dd": 26.88,
+      "trades": 424,
+      "peak": 146097.36,
+      "min": 76766.52,
+      "hold": 2.4,
+      "win": 0.4886,
+      "costs": 0,
+      "max_cons_loss": 7,
+      "exit_reasons": {
+        "peak_drop_15pct": 27,
+        "below_sma50_3d": 64,
+        "sma20_below_sma50": 85
+      }
+    },
+    "Baseline": {
+      "final_equity": 139731.72,
+      "return": 39.73,
+      "dd": 23.78,
+      "trades": 435,
+      "peak": 154255.63,
+      "min": 80819.52,
+      "hold": 2.3,
+      "win": 0.4783,
+      "costs": 0,
+      "max_cons_loss": 9,
+      "exit_reasons": {
+        "peak_drop_12pct": 40,
+        "below_sma50_3d": 59,
+        "sma20_below_sma50": 85
+      }
+    }
+  },
+  "selected_trend_exit": "T2(12%)",
+  "blind_results": {
+    "trend_best": {
+      "final_equity": 129039.41,
+      "return": 29.04,
+      "dd": 13.55,
+      "trades": 60,
+      "peak": 131247.1,
+      "min": 95813.5,
+      "hold": 4.2,
+      "win": 0.5,
+      "costs": 0,
+      "max_cons_loss": 4,
+      "exit_reasons": {
+        "peak_drop_12pct": 10,
+        "below_sma50_3d": 11,
+        "sma20_below_sma50": 7
+      }
+    },
+    "trend_no_learn": {
+      "final_equity": 129039.41,
+      "return": 29.04,
+      "dd": 13.55,
+      "trades": 60,
+      "peak": 131247.1,
+      "min": 95813.5,
+      "hold": 4.2,
+      "win": 0.5,
+      "costs": 0,
+      "max_cons_loss": 4,
+      "exit_reasons": {
+        "peak_drop_12pct": 10,
+        "below_sma50_3d": 11,
+        "sma20_below_sma50": 7
+      }
+    },
+    "trend_no_trend": {
+      "final_equity": 129039.41,
+      "return": 29.04,
+      "dd": 13.55,
+      "trades": 60,
+      "peak": 131247.1,
+      "min": 95813.5,
+      "hold": 4.2,
+      "win": 0.5,
+      "costs": 0,
+      "max_cons_loss": 4,
+      "exit_reasons": {
+        "peak_drop_12pct": 10,
+        "below_sma50_3d": 11,
+        "sma20_below_sma50": 7
+      }
+    },
+    "baseline_no_trend": {
+      "final_equity": 129039.41,
+      "return": 29.04,
+      "dd": 13.55,
+      "trades": 60,
+      "peak": 131247.1,
+      "min": 95813.5,
+      "hold": 4.2,
+      "win": 0.5,
+      "costs": 0,
+      "max_cons_loss": 4,
+      "exit_reasons": {
+        "peak_drop_12pct": 10,
+        "below_sma50_3d": 11,
+        "sma20_below_sma50": 7
+      }
+    }
+  },
+  "bh_blind_avg": 48.4,
+  "walk_forward": [
+    {
+      "window": "0-2",
+      "train_ret": 0.0,
+      "test_ret": 0.0
+    },
+    {
+      "window": "0-3",
+      "train_ret": 0.0,
+      "test_ret": 0.0
+    }
+  ]
+}

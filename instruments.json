@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "instruments": [
+    {
+      "symbol": "NVDA",
+      "display_name": "NVIDIA Corporation",
+      "asset_type": "common_stock",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "data_source": "Nasdaq market activity page, checked 2026-06-30",
+      "aliases": [
+        "NVIDIA",
+        "Nvidia",
+        "NVIDIA Corp",
+        "NVIDIA Corporation"
+      ],
+      "verification_status": "confirmed"
+    },
+    {
+      "symbol": "SOFI",
+      "display_name": "SoFi Technologies, Inc.",
+      "asset_type": "common_stock",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "data_source": "Nasdaq market activity page, checked 2026-06-30",
+      "aliases": [
+        "SOFI",
+        "SoFi",
+        "SoFi Technologies",
+        "SoFi Technologies, Inc."
+      ],
+      "verification_status": "confirmed"
+    },
+    {
+      "symbol": "SPCX",
+      "display_name": "Space Exploration Technologies Corp.",
+      "asset_type": "common_stock",
+      "exchange": "NASDAQ",
+      "currency": "USD",
+      "data_source": "Nasdaq market activity page, checked 2026-06-30",
+      "aliases": [
+        "SPCX",
+        "SpaceX",
+        "Space Exploration Technologies",
+        "Space Exploration Technologies Corp."
+      ],
+      "verification_status": "confirmed"
+    }
+  ]
+}

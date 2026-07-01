@@ -1,0 +1,13 @@
+{
+  "symbol": "MSFT",
+  "price": "300.0",
+  "currency": "USD",
+  "market_time": "2026-06-30T08:37:58.232893+00:00",
+  "source": "yfinance",
+  "status": "OK",
+  "error_code": null,
+  "error_message": null,
+  "cached": false,
+  "latency_ms": 0.024499999199179,
+  "fetched_at": "2026-06-30T08:37:58.232911+00:00"
+}

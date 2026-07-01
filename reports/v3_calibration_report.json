@@ -1,0 +1,133 @@
+{
+  "methodology": "V2 fix: Decimal equity, peak-to-trough dd, learning/optimizer change tracking",
+  "blind_period": {
+    "start_idx": 1002,
+    "days": 251,
+    "years": 5.0
+  },
+  "blind_results": {
+    "calibrated_full": {
+      "final_equity": 101681.69,
+      "total_return": 1.68,
+      "max_dd": 19.36,
+      "trade_count": 95,
+      "buy_trades": 34,
+      "sell_trades": 61,
+      "win_rate": 0.5082,
+      "pl_ratio": 1.0656,
+      "avg_hold_days": 2.6,
+      "total_costs": 345.68,
+      "max_cons_loss": 6,
+      "risk_blocked": 0,
+      "cap_switches": 48,
+      "weight_changes": 4,
+      "learning_adjustments": 225,
+      "learning_changed_decisions": 0,
+      "optimizer_changed_decisions": 0,
+      "regime_pnl": {
+        "UNKNOWN": 2154.76
+      },
+      "pnl_check_match": true,
+      "total_net_pnl": 2154.76,
+      "equity_curve_len": 252,
+      "equity_peak": 111044.92,
+      "equity_min": 89541.88
+    },
+    "calibrated_no_learning": {
+      "final_equity": 101681.69,
+      "total_return": 1.68,
+      "max_dd": 19.36,
+      "trade_count": 95,
+      "buy_trades": 34,
+      "sell_trades": 61,
+      "win_rate": 0.5082,
+      "pl_ratio": 1.0656,
+      "avg_hold_days": 2.6,
+      "total_costs": 345.68,
+      "max_cons_loss": 6,
+      "risk_blocked": 0,
+      "cap_switches": 48,
+      "weight_changes": 4,
+      "learning_adjustments": 0,
+      "learning_changed_decisions": 0,
+      "optimizer_changed_decisions": 0,
+      "regime_pnl": {
+        "UNKNOWN": 2154.76
+      },
+      "pnl_check_match": true,
+      "total_net_pnl": 2154.76,
+      "equity_curve_len": 252,
+      "equity_peak": 111044.92,
+      "equity_min": 89541.88
+    },
+    "calibrated_no_opt_learn": {
+      "final_equity": 101681.69,
+      "total_return": 1.68,
+      "max_dd": 19.36,
+      "trade_count": 95,
+      "buy_trades": 34,
+      "sell_trades": 61,
+      "win_rate": 0.5082,
+      "pl_ratio": 1.0656,
+      "avg_hold_days": 2.6,
+      "total_costs": 345.68,
+      "max_cons_loss": 6,
+      "risk_blocked": 0,
+      "cap_switches": 48,
+      "weight_changes": 0,
+      "learning_adjustments": 0,
+      "learning_changed_decisions": 0,
+      "optimizer_changed_decisions": 0,
+      "regime_pnl": {
+        "UNKNOWN": 2154.76
+      },
+      "pnl_check_match": true,
+      "total_net_pnl": 2154.76,
+      "equity_curve_len": 252,
+      "equity_peak": 111044.92,
+      "equity_min": 89541.88
+    },
+    "original_no_cooldown": {
+      "final_equity": 143414.66,
+      "total_return": 43.41,
+      "max_dd": 16.37,
+      "trade_count": 225,
+      "buy_trades": 85,
+      "sell_trades": 140,
+      "win_rate": 0.75,
+      "pl_ratio": 0.9375,
+      "avg_hold_days": 1.1,
+      "total_costs": 764.44,
+      "max_cons_loss": 4,
+      "risk_blocked": 0,
+      "cap_switches": 34,
+      "weight_changes": 0,
+      "learning_adjustments": 0,
+      "learning_changed_decisions": 0,
+      "optimizer_changed_decisions": 0,
+      "regime_pnl": {
+        "UNKNOWN": 49893.52
+      },
+      "pnl_check_match": true,
+      "total_net_pnl": 49893.52,
+      "equity_curve_len": 252,
+      "equity_peak": 157062.29,
+      "equity_min": 99796.54
+    }
+  },
+  "bh_blind_per_stock": {
+    "NVDA": 23.57,
+    "AAPL": 37.86,
+    "MSFT": -25.31,
+    "GOOGL": 101.25,
+    "META": -23.53,
+    "AMZN": 9.46,
+    "AMD": 280.19,
+    "AVGO": 36.11,
+    "TSM": 103.16,
+    "PLTR": -15.13,
+    "SPY": 21.26,
+    "QQQ": 31.89
+  },
+  "bh_blind_avg": 48.4
+}
