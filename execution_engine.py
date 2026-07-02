@@ -360,9 +360,11 @@ class ExecutionEngine:
             return 50.0
         return self._rng.uniform(self.MIN_LATENCY_MS, self.MAX_LATENCY_MS)
 
-    @staticmethod
-    def _sleep_ms(ms: float) -> None:
+    def _sleep_ms(self, ms: float) -> None:
         """模拟延迟等待。"""
+        if self._deterministic:
+            # 测试模式下跳过延迟
+            return
         if ms > 0:
             time.sleep(ms / 1000.0)
 

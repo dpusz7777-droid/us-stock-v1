@@ -151,6 +151,18 @@ def _apply_legacy_cash_compatibility(
     document: dict[str, Any],
     schema_path: Path,
 ) -> dict[str, Any]:
+    """应用旧版现金兼容性。
+
+    如果文档缺少 cash 字段，尝试从旧版 portfolio.json 加载现金值。
+    返回新对象，不修改输入文档。
+
+    Args:
+        document: 原始文档
+        schema_path: 当前 schema 文件路径
+
+    Returns:
+        新文档对象（如果不需要兼容则返回原始文档）
+    """
     if document.get("schema_version") != SUPPORTED_SCHEMA_VERSION:
         return document
     account = document.get("account")

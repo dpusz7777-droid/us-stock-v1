@@ -334,13 +334,33 @@ class RiskEngine:
     # ------------------------------------------------------------------
 
     def _check_volatility(
-        self, pr: PriceResultV2 | None
+        self, pr: PriceResultV2 | None, change_pct: Decimal | None = None
     ) -> tuple[RiskLevel, str]:
+        """评估市场波动风险。
+
+        Args:
+            pr: 行情结果对象
+            change_pct: 价格变化百分比（可选）
+
+        Returns:
+            (RiskLevel, reason)
+        """
         if pr is None or pr.price is None:
             return RiskLevel.LOW, ""
-        # Without change_pct, estimate volatility from price level
-        # In real integration, caller should pass change_pct.
-        # Default: LOW when no data.
+
+        # 如果有显式的 change_pct，使用它
+        if change_pct is not None:
+            return self.check_volatility_with_change(change_pct)
+
+        # 如果没有 change_pct，尝试从 price 和 previous_close 估算
+        # 注意：PriceResultV2 没有 previous_close，这里使用 status 作为参考
+        if pr.status == "STALE":
+            return RiskLevel.MEDIUM, (
+                f"Stale price data for {pr.symbol}. "
+                "Volatility cannot be accurately assessed."
+            )
+
+        # 默认返回 LOW
         return RiskLevel.LOW, ""
 
     def check_volatility_with_change(

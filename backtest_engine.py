@@ -294,11 +294,12 @@ class BacktestEngine:
         symbol: str,
         price_series: list[tuple[Decimal, str]],
     ) -> BacktestResult:
+        """运行单个标的的回测。"""
         cfg = self._config
         cash = self._initial_cash
         position_qty = Decimal("0")
         position_avg_cost = Decimal("0")
-        position_peak_price = Decimal("0")  # 用于移动止损
+        position_peak_price = Decimal("0")
         entry_price = Decimal("0")
         equity_curve: list[Decimal] = []
         timestamps: list[str] = []
@@ -315,20 +316,11 @@ class BacktestEngine:
 
         prices_only = [p for p, _ in price_series]
         atr_series = _compute_atr(prices_only, cfg.atr_period)
-        
-        # 过度交易抑制状态
-        cooldown_until: int = -1                    # 冷却期截止索引
-        signal_confirm_count: dict[str, int] = {}   # 信号确认计数 {symbol: count}
-        last_action: str | None = None              # 上次操作
-        consecutive_buys: int = 0                    # 连续买入计数
+        sma20 = self._compute_sma20(prices_only, cfg.trend_lock_days)
 
-        # 趋势锁定：计算 20 日均线
-        sma20: list[Decimal] = []
-        for j in range(len(prices_only)):
-            if j < cfg.trend_lock_days:
-                sma20.append(Decimal("0"))
-            else:
-                sma20.append(sum(prices_only[j-cfg.trend_lock_days:j]) / Decimal(str(cfg.trend_lock_days)))
+        # 过度交易抑制状态
+        cooldown_until: int = -1
+        consecutive_buys: int = 0
 
         for i, (price, ts) in enumerate(price_series):
             from price_provider_v2 import PriceResultV2, PRICE_STATUS_OK
@@ -336,71 +328,25 @@ class BacktestEngine:
             atr = atr_series[i] if i < len(atr_series) else Decimal("0")
 
             # ---- 检查止损/止盈 ----
-            stop_reason = None
-            if position_qty > Decimal("0") and entry_price > Decimal("0"):
-                # 固定止损
-                loss_pct = (price - entry_price) / entry_price * Decimal("100")
-                if loss_pct <= -cfg.stop_loss_pct:
-                    stop_reason = "stop_loss"
-                    stop_loss_cnt += 1
-                # 固定止盈
-                elif loss_pct >= cfg.take_profit_pct:
-                    stop_reason = "take_profit"
-                    take_profit_cnt += 1
-                # 移动止损
-                if stop_reason is None:
-                    if price > position_peak_price:
-                        position_peak_price = price
-                    if position_peak_price > entry_price * (Decimal("1") + cfg.trailing_stop_activate_pct / Decimal("100")):
-                        trail_stop = position_peak_price * (Decimal("1") - cfg.trailing_stop_distance_pct / Decimal("100"))
-                        if price <= trail_stop:
-                            stop_reason = "trailing_stop"
-                            trailing_stop_cnt += 1
-
-            if stop_reason:
-                fill_qty = position_qty
-                fill_price = price
-                proceeds = fill_price * fill_qty
-                cost_basis = position_avg_cost * fill_qty
-                pnl = proceeds - cost_basis
-                cost = self._cost_model.total_cost(fill_price, fill_qty, is_buy=False)
-                proceeds_net = proceeds - cost
-                pnl_net = proceeds_net - cost_basis
-                cash += proceeds_net
-                total_commission += cost * Decimal("0.5")
-                total_spread += cost * Decimal("0.3")
-                total_slippage += cost * Decimal("0.2")
-                trade_pnls.append(pnl_net)
-                if pnl_net > max_win_trade: max_win_trade = pnl_net
-                if pnl_net < max_loss_trade: max_loss_trade = pnl_net
-                trade_count += 1
-                if pnl_net > Decimal("0"): win_count += 1
-                else: lose_count += 1
-                trade_records.append({
-                    "date": ts, "action": stop_reason, "symbol": symbol,
-                    "qty": str(fill_qty), "price": str(fill_price),
-                    "pnl": str(pnl_net), "pnl_pct": str(pnl / cost_basis * Decimal("100") if cost_basis > Decimal("0") else Decimal("0")),
-                })
-                position_qty = Decimal("0")
-                position_avg_cost = Decimal("0")
-                entry_price = Decimal("0")
+            stop_result = self._check_stop_loss_take_profit(
+                position_qty, entry_price, price, position_peak_price,
+                cfg, symbol, ts
+            )
+            if stop_result:
+                cash, position_qty, position_avg_cost, entry_price, position_peak_price, \
+                    trade_count, win_count, lose_count, trade_pnls, trade_records, \
+                    stop_loss_cnt, take_profit_cnt, trailing_stop_cnt, \
+                    total_commission, total_spread, total_slippage, max_win_trade, max_loss_trade = \
+                    self._apply_stop_result(
+                        stop_result, cash, position_qty, position_avg_cost, entry_price,
+                        position_peak_price, trade_count, win_count, lose_count,
+                        trade_pnls, trade_records, stop_loss_cnt, take_profit_cnt,
+                        trailing_stop_cnt, total_commission, total_spread, total_slippage,
+                        max_win_trade, max_loss_trade
+                    )
 
             # ---- 信号生成 ----
-            if i == 0:
-                signal_list = self._signal_engine.evaluate({symbol: price_result})
-            else:
-                prev_price = price_series[i - 1][0]
-                if prev_price > Decimal("0") and atr > Decimal("0"):
-                    change_pct = (price - prev_price) / prev_price * Decimal("100")
-                    # 用 ATR 动态调整阈值
-                    atr_pct = atr / price * Decimal("100")
-                    threshold = atr_pct * cfg.atr_buy_threshold
-                    strong_threshold = atr_pct * cfg.atr_strong_buy_threshold
-                    sell_threshold = atr_pct * Decimal("-1") * abs(cfg.atr_sell_threshold)
-                    strong_sell_threshold = atr_pct * Decimal("-1") * abs(cfg.atr_strong_sell_threshold)
-                    signal_list = self._signal_engine.evaluate_with_change_pct(symbol, price, change_pct)
-                else:
-                    signal_list = self._signal_engine.evaluate({symbol: price_result})
+            signal_list = self._generate_signal(symbol, price, price_series, i, atr, price_result)
 
             if not signal_list:
                 equity = cash + position_qty * price
@@ -408,157 +354,385 @@ class BacktestEngine:
                 timestamps.append(ts)
                 continue
 
-            signal = signal_list[0]
-            risk_decisions = self._risk_engine.evaluate(signal_list)
-            risk_decision = risk_decisions[0] if risk_decisions else None
-
-            position_value = position_qty * price
-            total_value = cash + position_value
-            position_pct = float(position_value / total_value * Decimal("100")) if total_value > Decimal("0") else 0.0
-
-            decision = self._decision_engine.evaluate(signal, risk_decision, position_pct=position_pct)
+            # ---- 风控与决策 ----
+            decision, risk_decision = self._evaluate_risk_and_decision(
+                signal_list, symbol, price, position_qty, cash
+            )
 
             # ---- 过度交易抑制 ----
-            # 1. 冷却期检查
-            if cooldown_until > i:
-                # 冷却期内：强制 HOLD
-                if decision.action in (DecisionAction.BUY, DecisionAction.SELL, DecisionAction.REDUCE):
-                    decision = self._decision_engine.evaluate(
-                        Signal(symbol=symbol, signal_type=SignalType.HOLD, strength=10, confidence=0.3,
-                               reason=f"Cooldown until day {cooldown_until}", source="backtest"),
-                        risk_decision, position_pct=position_pct
-                    )
+            decision, cooldown_until, consecutive_buys = self._apply_overtrading_suppression(
+                decision, i, cooldown_until, consecutive_buys, cfg, symbol, risk_decision,
+                position_qty, price, cash
+            )
 
-            # 2. BUY 信号确认机制
-            if decision.action == DecisionAction.BUY:
-                consecutive_buys += 1
-                if consecutive_buys < cfg.signal_confirmation:
-                    # 未达到确认次数 -> 暂不执行 BUY，改为 HOLD
-                    decision = self._decision_engine.evaluate(
-                        Signal(symbol=symbol, signal_type=SignalType.HOLD, strength=15, confidence=0.4,
-                               reason=f"BUY confirmation {consecutive_buys}/{cfg.signal_confirmation}", source="backtest"),
-                        risk_decision, position_pct=position_pct
-                    )
-            else:
-                consecutive_buys = 0
+            # ---- 趋势锁定 ----
+            decision = self._apply_trend_lock(decision, i, cfg, sma20, price, symbol, risk_decision,
+                                               position_qty, price, cash)
 
-            # 3. 趋势锁定：上涨趋势中禁止 SELL/REDUCE
-            if decision.action in (DecisionAction.SELL, DecisionAction.REDUCE) and i >= cfg.trend_lock_days:
-                sma = sma20[i]
-                if sma > Decimal("0") and price > sma:
-                    # 价格在 20 日均线上方 -> 上涨趋势 -> 锁定，不卖出
-                    decision = self._decision_engine.evaluate(
-                        Signal(symbol=symbol, signal_type=SignalType.HOLD, strength=20, confidence=0.5,
-                               reason=f"Trend lock: price ${price:.2f} above SMA20 ${sma:.2f}", source="backtest"),
-                        risk_decision, position_pct=position_pct
-                    )
-
-            # 记录冷却期
-            if decision.action in (DecisionAction.BUY, DecisionAction.SELL, DecisionAction.REDUCE):
-                cooldown_until = i + cfg.cooldown_days
-
-            # ---- 动态仓位计算 ----
-            requested_qty = cfg.fixed_qty
-            if requested_qty is None and decision.action == DecisionAction.BUY:
-                stop_dist = cfg.stop_loss_pct / Decimal("100")
-                risk_cash = total_value * cfg.max_risk_ratio
-                if stop_dist > Decimal("0") and price > Decimal("0"):
-                    qty_raw = risk_cash / (price * stop_dist)
-                    qty_raw = qty_raw.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-                    max_by_portfolio = (total_value * (cfg.max_position_pct / Decimal("100"))) / price
-                    max_by_portfolio = max_by_portfolio.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
-                    requested_qty = min(qty_raw, max_by_portfolio)
-                    if requested_qty < Decimal("1"):
-                        requested_qty = Decimal("1")
-
-            ex_result = self._execution_engine.submit_order(decision, price, requested_qty=requested_qty)
-            if ex_result and ex_result.status in (OrderStatus.FILLED, OrderStatus.PARTIAL):
-                fill_price = ex_result.fill_price or price
-                fill_qty = ex_result.filled_qty or Decimal("0")
-
-                if decision.action == DecisionAction.BUY:
-                    cost = fill_price * fill_qty
-                    tcost = self._cost_model.total_cost(fill_price, fill_qty, is_buy=True)
-                    total_commission += tcost * Decimal("0.5")
-                    total_spread += tcost * Decimal("0.3")
-                    total_slippage += tcost * Decimal("0.2")
-                    total_cost = cost + tcost
-                    if total_cost <= cash:
-                        cash -= total_cost
-                        total_cb = position_avg_cost * position_qty + cost
-                        position_qty += fill_qty
-                        position_avg_cost = total_cb / position_qty if position_qty > Decimal("0") else Decimal("0")
-                        entry_price = fill_price
-                        position_peak_price = fill_price
-                        trade_count += 1
-                        trade_records.append({
-                            "date": ts, "action": "BUY", "symbol": symbol,
-                            "qty": str(fill_qty), "price": str(fill_price),
-                            "cost": str(tcost),
-                        })
-
-                elif decision.action in (DecisionAction.SELL, DecisionAction.REDUCE):
-                    if fill_qty <= position_qty:
-                        proceeds = fill_price * fill_qty
-                        cost_basis = position_avg_cost * fill_qty
-                        pnl = proceeds - cost_basis
-                        tcost = self._cost_model.total_cost(fill_price, fill_qty, is_buy=False)
-                        total_commission += tcost * Decimal("0.5")
-                        total_spread += tcost * Decimal("0.3")
-                        total_slippage += tcost * Decimal("0.2")
-                        cash += proceeds - tcost
-                        position_qty -= fill_qty
-                        trade_pnls.append(pnl - tcost)
-                        if pnl - tcost > max_win_trade: max_win_trade = pnl - tcost
-                        if pnl - tcost < max_loss_trade: max_loss_trade = pnl - tcost
-                        trade_count += 1
-                        if pnl - tcost > Decimal("0"): win_count += 1
-                        else: lose_count += 1
-                        trade_records.append({
-                            "date": ts, "action": decision.action.value, "symbol": symbol,
-                            "qty": str(fill_qty), "price": str(fill_price),
-                            "pnl": str(pnl - tcost),
-                            "pnl_pct": str(pnl / cost_basis * Decimal("100") if cost_basis > Decimal("0") else Decimal("0")),
-                        })
-                        if position_qty == Decimal("0"):
-                            entry_price = Decimal("0")
+            # ---- 执行交易 ----
+            cash, position_qty, position_avg_cost, entry_price, position_peak_price, \
+                trade_count, win_count, lose_count, trade_pnls, trade_records, \
+                total_commission, total_spread, total_slippage, max_win_trade, max_loss_trade = \
+                self._execute_decision(
+                    decision, price, cash, position_qty, position_avg_cost, entry_price,
+                    position_peak_price, trade_count, win_count, lose_count,
+                    trade_pnls, trade_records, total_commission, total_spread, total_slippage,
+                    max_win_trade, max_loss_trade, ts, symbol
+                )
 
             equity = cash + position_qty * price
             equity_curve.append(equity)
             timestamps.append(ts)
 
         # 收盘平仓
+        cash, position_qty, trade_count, win_count, lose_count, trade_pnls, \
+            max_win_trade, max_loss_trade = self._close_positions(
+                position_qty, position_avg_cost, price_series, cash,
+                trade_count, win_count, lose_count, trade_pnls,
+                max_win_trade, max_loss_trade
+            )
+
+        # 最终统计
+        return self._compute_final_result(
+            cash, position_qty, price_series, equity_curve, timestamps,
+            trade_count, win_count, lose_count, trade_pnls,
+            total_commission, total_spread, total_slippage,
+            max_win_trade, max_loss_trade,
+            stop_loss_cnt, take_profit_cnt, trailing_stop_cnt, trade_records
+        )
+
+    def _compute_sma20(self, prices_only: list[Decimal], trend_lock_days: int) -> list[Decimal]:
+        """计算 20 日均线。"""
+        sma20: list[Decimal] = []
+        for j in range(len(prices_only)):
+            if j < trend_lock_days:
+                sma20.append(Decimal("0"))
+            else:
+                sma20.append(sum(prices_only[j - trend_lock_days:j]) / Decimal(str(trend_lock_days)))
+        return sma20
+
+    def _check_stop_loss_take_profit(
+        self, position_qty: Decimal, entry_price: Decimal, price: Decimal,
+        position_peak_price: Decimal, cfg: BacktestConfig, symbol: str, ts: str
+    ) -> dict | None:
+        """检查止损/止盈条件。"""
+        if position_qty <= Decimal("0") or entry_price <= Decimal("0"):
+            return None
+
+        loss_pct = (price - entry_price) / entry_price * Decimal("100")
+        stop_reason = None
+
+        if loss_pct <= -cfg.stop_loss_pct:
+            stop_reason = "stop_loss"
+        elif loss_pct >= cfg.take_profit_pct:
+            stop_reason = "take_profit"
+
+        if stop_reason is None:
+            new_peak = max(position_peak_price, price)
+            if new_peak > entry_price * (Decimal("1") + cfg.trailing_stop_activate_pct / Decimal("100")):
+                trail_stop = new_peak * (Decimal("1") - cfg.trailing_stop_distance_pct / Decimal("100"))
+                if price <= trail_stop:
+                    stop_reason = "trailing_stop"
+
+        if stop_reason:
+            return {
+                "reason": stop_reason,
+                "fill_qty": position_qty,
+                "fill_price": price,
+                "symbol": symbol,
+                "ts": ts,
+            }
+        return None
+
+    def _apply_stop_result(
+        self, stop_result: dict, cash: Decimal, position_qty: Decimal,
+        position_avg_cost: Decimal, entry_price: Decimal, position_peak_price: Decimal,
+        trade_count: int, win_count: int, lose_count: int,
+        trade_pnls: list[Decimal], trade_records: list[dict],
+        stop_loss_cnt: int, take_profit_cnt: int, trailing_stop_cnt: int,
+        total_commission: Decimal, total_spread: Decimal, total_slippage: Decimal,
+        max_win_trade: Decimal, max_loss_trade: Decimal
+    ) -> tuple:
+        """应用止损/止盈结果。"""
+        fill_qty = stop_result["fill_qty"]
+        fill_price = stop_result["fill_price"]
+        proceeds = fill_price * fill_qty
+        cost_basis = position_avg_cost * fill_qty
+        pnl = proceeds - cost_basis
+        cost = self._cost_model.total_cost(fill_price, fill_qty, is_buy=False)
+        proceeds_net = proceeds - cost
+        pnl_net = proceeds_net - cost_basis
+        cash += proceeds_net
+        total_commission += cost * Decimal("0.5")
+        total_spread += cost * Decimal("0.3")
+        total_slippage += cost * Decimal("0.2")
+        trade_pnls.append(pnl_net)
+        if pnl_net > max_win_trade:
+            max_win_trade = pnl_net
+        if pnl_net < max_loss_trade:
+            max_loss_trade = pnl_net
+        trade_count += 1
+        if pnl_net > Decimal("0"):
+            win_count += 1
+        else:
+            lose_count += 1
+        trade_records.append({
+            "date": stop_result["ts"],
+            "action": stop_result["reason"],
+            "symbol": stop_result["symbol"],
+            "qty": str(fill_qty),
+            "price": str(fill_price),
+            "pnl": str(pnl_net),
+            "pnl_pct": str(pnl / cost_basis * Decimal("100") if cost_basis > Decimal("0") else Decimal("0")),
+        })
+        position_qty = Decimal("0")
+        position_avg_cost = Decimal("0")
+        entry_price = Decimal("0")
+        position_peak_price = Decimal("0")
+
+        if stop_result["reason"] == "stop_loss":
+            stop_loss_cnt += 1
+        elif stop_result["reason"] == "take_profit":
+            take_profit_cnt += 1
+        elif stop_result["reason"] == "trailing_stop":
+            trailing_stop_cnt += 1
+
+        return (cash, position_qty, position_avg_cost, entry_price, position_peak_price,
+                trade_count, win_count, lose_count, trade_pnls, trade_records,
+                stop_loss_cnt, take_profit_cnt, trailing_stop_cnt,
+                total_commission, total_spread, total_slippage,
+                max_win_trade, max_loss_trade)
+
+    def _generate_signal(
+        self, symbol: str, price: Decimal, price_series: list[tuple[Decimal, str]],
+        i: int, atr: Decimal, price_result: Any
+    ) -> list:
+        """生成交易信号。"""
+        if i == 0:
+            return self._signal_engine.evaluate({symbol: price_result})
+
+        prev_price = price_series[i - 1][0]
+        if prev_price > Decimal("0") and atr > Decimal("0"):
+            change_pct = (price - prev_price) / prev_price * Decimal("100")
+            return self._signal_engine.evaluate_with_change_pct(symbol, price, change_pct)
+        return self._signal_engine.evaluate({symbol: price_result})
+
+    def _evaluate_risk_and_decision(
+        self, signal_list: list, symbol: str, price: Decimal,
+        position_qty: Decimal, cash: Decimal
+    ) -> tuple:
+        """评估风控并生成决策。"""
+        signal = signal_list[0]
+        risk_decisions = self._risk_engine.evaluate(signal_list)
+        risk_decision = risk_decisions[0] if risk_decisions else None
+
+        position_value = position_qty * price
+        total_value = cash + position_value
+        position_pct = float(position_value / total_value * Decimal("100")) if total_value > Decimal("0") else 0.0
+
+        decision = self._decision_engine.evaluate(signal, risk_decision, position_pct=position_pct)
+        return decision, risk_decision
+
+    def _apply_overtrading_suppression(
+        self, decision: Any, i: int, cooldown_until: int, consecutive_buys: int,
+        cfg: BacktestConfig, symbol: str, risk_decision: Any,
+        position_qty: Decimal, price: Decimal, cash: Decimal
+    ) -> tuple:
+        """应用过度交易抑制规则。"""
+        from decision_engine import DecisionAction
+        from signal_engine import Signal, SignalType
+
+        # 冷却期检查
+        if cooldown_until > i:
+            if decision.action in (DecisionAction.BUY, DecisionAction.SELL, DecisionAction.REDUCE):
+                decision = self._decision_engine.evaluate(
+                    Signal(symbol=symbol, signal_type=SignalType.HOLD, strength=10, confidence=0.3,
+                           reason=f"Cooldown until day {cooldown_until}", source="backtest"),
+                    risk_decision,
+                    position_pct=float(position_qty * price / (cash + position_qty * price) * 100) if (cash + position_qty * price) > 0 else 0.0
+                )
+
+        # BUY 信号确认机制
+        if decision.action == DecisionAction.BUY:
+            consecutive_buys += 1
+            if consecutive_buys < cfg.signal_confirmation:
+                decision = self._decision_engine.evaluate(
+                    Signal(symbol=symbol, signal_type=SignalType.HOLD, strength=15, confidence=0.4,
+                           reason=f"BUY confirmation {consecutive_buys}/{cfg.signal_confirmation}", source="backtest"),
+                    risk_decision,
+                    position_pct=float(position_qty * price / (cash + position_qty * price) * 100) if (cash + position_qty * price) > 0 else 0.0
+                )
+        else:
+            consecutive_buys = 0
+
+        # 记录冷却期
+        if decision.action in (DecisionAction.BUY, DecisionAction.SELL, DecisionAction.REDUCE):
+            cooldown_until = i + cfg.cooldown_days
+
+        return decision, cooldown_until, consecutive_buys
+
+    def _apply_trend_lock(
+        self, decision: Any, i: int, cfg: BacktestConfig, sma20: list[Decimal],
+        price: Decimal, symbol: str, risk_decision: Any,
+        position_qty: Decimal, price_val: Decimal, cash: Decimal
+    ) -> Any:
+        """应用趋势锁定规则。"""
+        from decision_engine import DecisionAction
+        from signal_engine import Signal, SignalType
+
+        if decision.action in (DecisionAction.SELL, DecisionAction.REDUCE) and i >= cfg.trend_lock_days:
+            sma = sma20[i]
+            if sma > Decimal("0") and price > sma:
+                decision = self._decision_engine.evaluate(
+                    Signal(symbol=symbol, signal_type=SignalType.HOLD, strength=20, confidence=0.5,
+                           reason=f"Trend lock: price ${price:.2f} above SMA20 ${sma:.2f}", source="backtest"),
+                    risk_decision,
+                    position_pct=float(position_qty * price_val / (cash + position_qty * price_val) * 100) if (cash + position_qty * price_val) > 0 else 0.0
+                )
+        return decision
+
+    def _execute_decision(
+        self, decision: Any, price: Decimal, cash: Decimal,
+        position_qty: Decimal, position_avg_cost: Decimal, entry_price: Decimal,
+        position_peak_price: Decimal, trade_count: int, win_count: int, lose_count: int,
+        trade_pnls: list[Decimal], trade_records: list[dict],
+        total_commission: Decimal, total_spread: Decimal, total_slippage: Decimal,
+        max_win_trade: Decimal, max_loss_trade: Decimal, ts: str, symbol: str
+    ) -> tuple:
+        """执行交易决策。"""
+        from decision_engine import DecisionAction
+        from execution_engine import OrderStatus
+
+        cfg = self._config
+        total_value = cash + position_qty * price
+
+        # 动态仓位计算
+        requested_qty = cfg.fixed_qty
+        if requested_qty is None and decision.action == DecisionAction.BUY:
+            stop_dist = cfg.stop_loss_pct / Decimal("100")
+            risk_cash = total_value * cfg.max_risk_ratio
+            if stop_dist > Decimal("0") and price > Decimal("0"):
+                qty_raw = risk_cash / (price * stop_dist)
+                qty_raw = qty_raw.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+                max_by_portfolio = (total_value * (cfg.max_position_pct / Decimal("100"))) / price
+                max_by_portfolio = max_by_portfolio.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+                requested_qty = min(qty_raw, max_by_portfolio)
+                if requested_qty < Decimal("1"):
+                    requested_qty = Decimal("1")
+
+        ex_result = self._execution_engine.submit_order(decision, price, requested_qty=requested_qty)
+        if ex_result and ex_result.status in (OrderStatus.FILLED, OrderStatus.PARTIAL):
+            fill_price = ex_result.fill_price or price
+            fill_qty = ex_result.filled_qty or Decimal("0")
+
+            if decision.action == DecisionAction.BUY:
+                cost = fill_price * fill_qty
+                tcost = self._cost_model.total_cost(fill_price, fill_qty, is_buy=True)
+                total_commission += tcost * Decimal("0.5")
+                total_spread += tcost * Decimal("0.3")
+                total_slippage += tcost * Decimal("0.2")
+                total_cost = cost + tcost
+                if total_cost <= cash:
+                    cash -= total_cost
+                    total_cb = position_avg_cost * position_qty + cost
+                    position_qty += fill_qty
+                    position_avg_cost = total_cb / position_qty if position_qty > Decimal("0") else Decimal("0")
+                    entry_price = fill_price
+                    position_peak_price = fill_price
+                    trade_count += 1
+                    trade_records.append({
+                        "date": ts, "action": "BUY", "symbol": symbol,
+                        "qty": str(fill_qty), "price": str(fill_price),
+                        "cost": str(tcost),
+                    })
+
+            elif decision.action in (DecisionAction.SELL, DecisionAction.REDUCE):
+                if fill_qty <= position_qty:
+                    proceeds = fill_price * fill_qty
+                    cost_basis = position_avg_cost * fill_qty
+                    pnl = proceeds - cost_basis
+                    tcost = self._cost_model.total_cost(fill_price, fill_qty, is_buy=False)
+                    total_commission += tcost * Decimal("0.5")
+                    total_spread += tcost * Decimal("0.3")
+                    total_slippage += tcost * Decimal("0.2")
+                    cash += proceeds - tcost
+                    position_qty -= fill_qty
+                    trade_pnls.append(pnl - tcost)
+                    if pnl - tcost > max_win_trade:
+                        max_win_trade = pnl - tcost
+                    if pnl - tcost < max_loss_trade:
+                        max_loss_trade = pnl - tcost
+                    trade_count += 1
+                    if pnl - tcost > Decimal("0"):
+                        win_count += 1
+                    else:
+                        lose_count += 1
+                    trade_records.append({
+                        "date": ts, "action": decision.action.value, "symbol": symbol,
+                        "qty": str(fill_qty), "price": str(fill_price),
+                        "pnl": str(pnl - tcost),
+                        "pnl_pct": str(pnl / cost_basis * Decimal("100") if cost_basis > Decimal("0") else Decimal("0")),
+                    })
+                    if position_qty == Decimal("0"):
+                        entry_price = Decimal("0")
+
+        return (cash, position_qty, position_avg_cost, entry_price, position_peak_price,
+                trade_count, win_count, lose_count, trade_pnls, trade_records,
+                total_commission, total_spread, total_slippage,
+                max_win_trade, max_loss_trade)
+
+    def _close_positions(
+        self, position_qty: Decimal, position_avg_cost: Decimal,
+        price_series: list[tuple[Decimal, str]], cash: Decimal,
+        trade_count: int, win_count: int, lose_count: int,
+        trade_pnls: list[Decimal], max_win_trade: Decimal, max_loss_trade: Decimal
+    ) -> tuple:
+        """收盘平仓。"""
         if position_qty > Decimal("0") and price_series:
             last_price = price_series[-1][0]
             cost_basis = position_avg_cost * position_qty
             pnl = last_price * position_qty - cost_basis
             trade_pnls.append(pnl)
-            if pnl > max_win_trade: max_win_trade = pnl
-            if pnl < max_loss_trade: max_loss_trade = pnl
+            if pnl > max_win_trade:
+                max_win_trade = pnl
+            if pnl < max_loss_trade:
+                max_loss_trade = pnl
             trade_count += 1
-            if pnl > Decimal("0"): win_count += 1
-            else: lose_count += 1
+            if pnl > Decimal("0"):
+                win_count += 1
+            else:
+                lose_count += 1
+        return cash, position_qty, trade_count, win_count, lose_count, trade_pnls, max_win_trade, max_loss_trade
 
-        # 最终统计
+    def _compute_final_result(
+        self, cash: Decimal, position_qty: Decimal,
+        price_series: list[tuple[Decimal, str]], equity_curve: list[Decimal],
+        timestamps: list[str], trade_count: int, win_count: int, lose_count: int,
+        trade_pnls: list[Decimal], total_commission: Decimal, total_spread: Decimal,
+        total_slippage: Decimal, max_win_trade: Decimal, max_loss_trade: Decimal,
+        stop_loss_cnt: int, take_profit_cnt: int, trailing_stop_cnt: int,
+        trade_records: list[dict]
+    ) -> BacktestResult:
+        """计算最终回测结果。"""
         final_equity = cash + position_qty * (price_series[-1][0] if price_series else Decimal("0"))
         total_return = final_equity - self._initial_cash
         total_return_pct = total_return / self._initial_cash * Decimal("100") if self._initial_cash > Decimal("0") else Decimal("0")
         win_rate = win_count / trade_count if trade_count > 0 else 0.0
 
-        # 盈亏比
         wins = [t for t in trade_pnls if t > Decimal("0")]
         losses = [t for t in trade_pnls if t <= Decimal("0")]
         avg_win = sum(wins) / Decimal(str(len(wins))) if wins else Decimal("0")
         avg_loss = sum(losses) / Decimal(str(len(losses))) if losses else Decimal("0")
         profit_loss_ratio = float(avg_win / abs(avg_loss)) if avg_loss != Decimal("0") else 0.0
 
-        # 最大回撤
         max_drawdown = Decimal("0")
         running_peak = self._initial_cash
         for eq in equity_curve:
-            if eq > running_peak: running_peak = eq
+            if eq > running_peak:
+                running_peak = eq
             dd = (running_peak - eq) / running_peak * Decimal("100") if running_peak > Decimal("0") else Decimal("0")
-            if dd > max_drawdown: max_drawdown = dd
+            if dd > max_drawdown:
+                max_drawdown = dd
 
         return BacktestResult(
             total_return=total_return,

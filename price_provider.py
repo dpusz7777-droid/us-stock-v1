@@ -116,8 +116,22 @@ def _iso_utc_from_datetime_like(value: Any) -> str | None:
     )
 
 
+import warnings
+
 class PriceProvider:
-    """行情提供器接口基类。"""
+    """行情提供器接口基类（已废弃，请使用 price_provider_v2 中的 BasePriceProviderV2）。
+
+    .. deprecated::
+        请使用 price_provider_v2 中的 BasePriceProviderV2 替代。
+    """
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "PriceProvider is deprecated. Use price_provider_v2.BasePriceProviderV2 instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__()
 
     def get_price(self, symbol: str) -> Decimal:
         raise NotImplementedError

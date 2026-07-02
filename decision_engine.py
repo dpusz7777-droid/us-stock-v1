@@ -184,50 +184,59 @@ class DecisionEngine:
                 f"threshold. Reduce exposure."
             )
 
-        # ---- MarketRegime 叠加 ----
+        # ---- MarketRegime 叠加（统一处理，避免提前 return） ----
         regime = market_regime
 
-        # HIGH_RISK: 禁止 BUY，只允许 SELL/REDUCE/HOLD
-        if regime == MarketRegime.HIGH_RISK.value and signal_type == SignalType.BUY:
-            action = DecisionAction.HOLD
-            confidence = signal.confidence * 0.3
-            reason = f"BUY blocked by HIGH_RISK regime. Downgraded to HOLD."
+        # 初始化 regime 调整参数
+        regime_action_override: DecisionAction | None = None
+        regime_confidence_multiplier: float = 1.0
+        regime_reason_parts: list[str] = []
+
+        if regime == MarketRegime.HIGH_RISK.value:
+            # HIGH_RISK: 禁止 BUY，只允许 SELL/REDUCE/HOLD
+            if signal_type == SignalType.BUY:
+                regime_action_override = DecisionAction.HOLD
+                regime_confidence_multiplier = 0.3
+                regime_reason_parts.append("BUY blocked by HIGH_RISK regime")
+            else:
+                regime_reason_parts.append("HIGH_RISK regime active")
+
+        elif regime == MarketRegime.BEAR.value:
+            # BEAR: BUY 降级为 HOLD, SELL 权重 +30%
+            if signal_type == SignalType.BUY and not risk_blocked:
+                regime_action_override = DecisionAction.HOLD
+                regime_confidence_multiplier = 0.4
+                regime_reason_parts.append("BUY blocked by BEAR regime")
+            elif signal_type == SignalType.SELL:
+                regime_confidence_multiplier = 1.3
+                regime_reason_parts.append("BEAR regime: SELL boosted")
+            elif signal_type == SignalType.BUY and risk_level == RiskLevel.HIGH:
+                regime_action_override = DecisionAction.HOLD
+                regime_confidence_multiplier = 0.5
+                regime_reason_parts.append("BUY + HIGH risk in BEAR regime")
+            else:
+                regime_reason_parts.append("BEAR regime active")
+
+        elif regime == MarketRegime.BULL.value:
+            # BULL: BUY 权重 +20%, HOLD 优先级提高
+            if signal_type == SignalType.HOLD:
+                regime_confidence_multiplier = 1.1
+                regime_reason_parts.append("BULL regime: HOLD maintained")
+            elif signal_type == SignalType.BUY:
+                regime_confidence_multiplier = 1.2
+                regime_reason_parts.append("BULL regime: BUY boosted")
+            else:
+                regime_reason_parts.append("BULL regime active")
+
+        # 应用 regime 调整
+        if regime_action_override is not None:
+            action = regime_action_override
+            confidence = signal.confidence * regime_confidence_multiplier
+            reason = "; ".join(regime_reason_parts)
             decision = self._build_decision(symbol, action, confidence, reason,
                 risk_level_str, signal_type_str, orig_type_str, regime)
             event_bus.publish(DECISION_CREATED, {"decision": decision.to_dict(), "has_risk_decision": risk_decision is not None})
             return decision
-
-        # BEAR: BUY 降级为 HOLD, SELL 权重 +30%
-        if regime == MarketRegime.BEAR.value:
-            if signal_type == SignalType.BUY and not risk_blocked:
-                action = DecisionAction.HOLD
-                confidence = signal.confidence * 0.4
-                reason = f"BUY blocked by BEAR regime. Downgraded to HOLD."
-                decision = self._build_decision(symbol, action, confidence, reason,
-                    risk_level_str, signal_type_str, orig_type_str, regime)
-                event_bus.publish(DECISION_CREATED, {"decision": decision.to_dict(), "has_risk_decision": risk_decision is not None})
-                return decision
-            elif signal_type == SignalType.SELL:
-                confidence = min(1.0, signal.confidence * 1.3)
-            elif signal_type == SignalType.BUY and risk_level == RiskLevel.HIGH:
-                action = DecisionAction.HOLD
-                confidence = signal.confidence * 0.5
-                reason = f"BUY + HIGH risk in BEAR regime. HOLD."
-                decision = self._build_decision(symbol, action, confidence, reason,
-                    risk_level_str, signal_type_str, orig_type_str, regime)
-                event_bus.publish(DECISION_CREATED, {"decision": decision.to_dict(), "has_risk_decision": risk_decision is not None})
-                return decision
-
-        # BULL: BUY 权重 +20%, HOLD 优先级提高
-        if regime == MarketRegime.BULL.value:
-            if action is None and signal_type == SignalType.HOLD:
-                action = DecisionAction.HOLD
-                confidence = signal.confidence * 1.1
-                reason = f"HOLD signal in BULL regime. Maintaining position."
-            elif signal_type == SignalType.BUY:
-                if confidence <= 0:
-                    confidence = signal.confidence
-                confidence = min(1.0, confidence * 1.2)
 
         # (3)-(7) Fallback rules only when action not already set
         if action is None:

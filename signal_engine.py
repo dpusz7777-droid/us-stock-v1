@@ -156,33 +156,44 @@ class SignalEngine:
         return signals
 
     def _evaluate_price_strategies(
-        self, symbol: str, pr: PriceResultV2
+        self, symbol: str, pr: PriceResultV2, change_pct: Decimal | None = None
     ) -> list[Signal]:
-        """Momentum (> gain) + Mean Reversion (< loss)."""
+        """Momentum (> gain) + Mean Reversion (< loss).
+
+        Args:
+            symbol: 股票代码
+            pr: 行情结果对象
+            change_pct: 价格变化百分比（可选）
+
+        Returns:
+            List[Signal]
+        """
         signals: list[Signal] = []
         if pr.price is None:
             return signals
 
-        # We need a reference price. If previous_close from PriceResultV2 isn't
-        # available, use the market_time extracted data.
-        # For momentum/reversion, we compare against the disk cache or mock
-        # reference.  We use pr.price as current and estimate change_pct.
-        # Since PriceResultV2 has no previous_close, we use status and
-        # error state to decide.
-        if not pr.is_ok and not pr.status == "STALE":
+        # 如果提供了 change_pct，使用它生成信号
+        if change_pct is not None:
+            return self.evaluate_with_change_pct(symbol, pr.price, change_pct)
+
+        # 如果没有 change_pct，尝试从 pr 的状态估算
+        if not pr.is_ok and pr.status != "STALE":
             return signals
 
-        # If we have no previous_close, we can't compute change_pct accurately
-        # from price alone.  Fall back: rely on price magnitude trends.
-        # For now, if status is STALE it's an old price.
         if pr.status == "STALE":
-            # Can't generate momentum signals from stale data
+            # 陈旧数据无法生成动量信号
+            signals.append(Signal(
+                symbol=symbol,
+                signal_type=SignalType.HOLD,
+                strength=20,
+                confidence=0.2,
+                reason=f"Stale price data for {symbol}. "
+                       "Cannot generate momentum signals.",
+                source="price",
+            ))
             return signals
 
-        # Without previous_close in PriceResultV2, we use price level as proxy.
-        # A high price relative to a baseline is momentum; low is reversion.
-        # In real integration, caller should compute change_pct from history.
-        # Default: HOLD with minimal strength when we lack change data.
+        # 默认 HOLD
         signals.append(Signal(
             symbol=symbol,
             signal_type=SignalType.HOLD,
