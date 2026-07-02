@@ -1,0 +1,938 @@
+{
+  "cycles": {
+    "S0025": {
+      "cycle_id": "S0025",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:10:46.691570+00:00",
+      "status": "completed",
+      "latency": 0.00970911979675293,
+      "is_fallback": false,
+      "recorded_at": 1782983446.692384
+    },
+    "ES0025": {
+      "cycle_id": "ES0025",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:10:56.441647+00:00",
+      "status": "completed",
+      "latency": 0.010539054870605469,
+      "is_fallback": false,
+      "recorded_at": 1782983456.44248
+    },
+    "S0026": {
+      "cycle_id": "S0026",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:11:41.092965+00:00",
+      "status": "completed",
+      "latency": 0.009711980819702148,
+      "is_fallback": false,
+      "recorded_at": 1782983501.0937479
+    },
+    "ES0026": {
+      "cycle_id": "ES0026",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:11:51.972562+00:00",
+      "status": "completed",
+      "latency": 0.01228785514831543,
+      "is_fallback": false,
+      "recorded_at": 1782983511.9731572
+    },
+    "S0027": {
+      "cycle_id": "S0027",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:12:35.348548+00:00",
+      "status": "completed",
+      "latency": 0.009631872177124023,
+      "is_fallback": false,
+      "recorded_at": 1782983555.349385
+    },
+    "ES0027": {
+      "cycle_id": "ES0027",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:12:47.212961+00:00",
+      "status": "completed",
+      "latency": 0.013143777847290039,
+      "is_fallback": false,
+      "recorded_at": 1782983567.2135339
+    },
+    "S0028": {
+      "cycle_id": "S0028",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:13:30.252427+00:00",
+      "status": "completed",
+      "latency": 0.00977015495300293,
+      "is_fallback": false,
+      "recorded_at": 1782983610.253195
+    },
+    "ES0028": {
+      "cycle_id": "ES0028",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:13:42.279638+00:00",
+      "status": "completed",
+      "latency": 0.0062389373779296875,
+      "is_fallback": false,
+      "recorded_at": 1782983622.2800262
+    },
+    "S0029": {
+      "cycle_id": "S0029",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:14:25.174548+00:00",
+      "status": "completed",
+      "latency": 0.007986068725585938,
+      "is_fallback": false,
+      "recorded_at": 1782983665.1751401
+    },
+    "ES0029": {
+      "cycle_id": "ES0029",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:14:37.048168+00:00",
+      "status": "completed",
+      "latency": 0.008141040802001953,
+      "is_fallback": false,
+      "recorded_at": 1782983677.048953
+    },
+    "S0030": {
+      "cycle_id": "S0030",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:15:19.608583+00:00",
+      "status": "completed",
+      "latency": 0.00970315933227539,
+      "is_fallback": false,
+      "recorded_at": 1782983719.609389
+    },
+    "ES0030": {
+      "cycle_id": "ES0030",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:15:31.565795+00:00",
+      "status": "completed",
+      "latency": 0.00625920295715332,
+      "is_fallback": false,
+      "recorded_at": 1782983731.566051
+    },
+    "S0031": {
+      "cycle_id": "S0031",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:16:14.561752+00:00",
+      "status": "completed",
+      "latency": 0.008491039276123047,
+      "is_fallback": false,
+      "recorded_at": 1782983774.562946
+    },
+    "ES0031": {
+      "cycle_id": "ES0031",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:16:26.412313+00:00",
+      "status": "completed",
+      "latency": 0.03651571273803711,
+      "is_fallback": false,
+      "recorded_at": 1782983786.41302
+    },
+    "S0032": {
+      "cycle_id": "S0032",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:17:09.370171+00:00",
+      "status": "completed",
+      "latency": 0.009229660034179688,
+      "is_fallback": false,
+      "recorded_at": 1782983829.3710568
+    },
+    "ES0032": {
+      "cycle_id": "ES0032",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:17:21.228712+00:00",
+      "status": "completed",
+      "latency": 0.007972955703735352,
+      "is_fallback": false,
+      "recorded_at": 1782983841.229013
+    },
+    "S0033": {
+      "cycle_id": "S0033",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:18:18.184674+00:00",
+      "status": "completed",
+      "latency": 0.014171123504638672,
+      "is_fallback": false,
+      "recorded_at": 1782983898.185108
+    },
+    "ES0033": {
+      "cycle_id": "ES0033",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:18:18.193426+00:00",
+      "status": "completed",
+      "latency": 0.005444049835205078,
+      "is_fallback": false,
+      "recorded_at": 1782983898.193749
+    },
+    "W0033": {
+      "cycle_id": "W0033",
+      "type": "watchdog_skip",
+      "timestamp": "2026-07-02T09:21:48.765556+00:00",
+      "status": "skipped",
+      "heartbeat_elapsed": 0.00011515617370605469,
+      "recorded_at": 1782984108.766326
+    },
+    "S0034": {
+      "cycle_id": "S0034",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:21:49.937011+00:00",
+      "status": "completed",
+      "latency": 0.01015782356262207,
+      "is_fallback": false,
+      "recorded_at": 1782984109.9378219
+    },
+    "ES0034": {
+      "cycle_id": "ES0034",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:21:49.949592+00:00",
+      "status": "completed",
+      "latency": 0.006356954574584961,
+      "is_fallback": false,
+      "recorded_at": 1782984109.9500768
+    },
+    "W0034": {
+      "cycle_id": "W0034",
+      "type": "watchdog_skip",
+      "timestamp": "2026-07-02T09:25:30.616807+00:00",
+      "status": "skipped",
+      "heartbeat_elapsed": 0.00011920928955078125,
+      "recorded_at": 1782984330.617771
+    },
+    "S0035": {
+      "cycle_id": "S0035",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:25:31.750873+00:00",
+      "status": "completed",
+      "latency": 0.00958108901977539,
+      "is_fallback": false,
+      "recorded_at": 1782984331.752955
+    },
+    "ES0035": {
+      "cycle_id": "ES0035",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:25:31.768148+00:00",
+      "status": "completed",
+      "latency": 0.010219097137451172,
+      "is_fallback": false,
+      "recorded_at": 1782984331.768872
+    },
+    "S0036": {
+      "cycle_id": "S0036",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:26:41.461982+00:00",
+      "status": "completed",
+      "latency": 0.010661125183105469,
+      "is_fallback": false,
+      "recorded_at": 1782984401.462705
+    },
+    "ES0036": {
+      "cycle_id": "ES0036",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:26:41.477441+00:00",
+      "status": "completed",
+      "latency": 0.009669303894042969,
+      "is_fallback": false,
+      "recorded_at": 1782984401.478156
+    },
+    "W0036": {
+      "cycle_id": "W0036",
+      "type": "watchdog_skip",
+      "timestamp": "2026-07-02T09:28:55.200767+00:00",
+      "status": "skipped",
+      "heartbeat_elapsed": 0.00014090538024902344,
+      "recorded_at": 1782984535.201761
+    },
+    "S0037": {
+      "cycle_id": "S0037",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:28:56.408866+00:00",
+      "status": "completed",
+      "latency": 0.009579658508300781,
+      "is_fallback": false,
+      "recorded_at": 1782984536.4101179
+    },
+    "ES0037": {
+      "cycle_id": "ES0037",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:28:56.420559+00:00",
+      "status": "completed",
+      "latency": 0.005897045135498047,
+      "is_fallback": false,
+      "recorded_at": 1782984536.421315
+    },
+    "S0038": {
+      "cycle_id": "S0038",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:29:50.532480+00:00",
+      "status": "completed",
+      "latency": 0.009533882141113281,
+      "is_fallback": false,
+      "recorded_at": 1782984590.5331662
+    },
+    "W0038": {
+      "cycle_id": "W0038",
+      "type": "watchdog_skip",
+      "timestamp": "2026-07-02T09:33:00.629340+00:00",
+      "status": "skipped",
+      "heartbeat_elapsed": 0.000370025634765625,
+      "recorded_at": 1782984780.630111
+    },
+    "S0039": {
+      "cycle_id": "S0039",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:33:01.848543+00:00",
+      "status": "completed",
+      "latency": 0.009739160537719727,
+      "is_fallback": false,
+      "recorded_at": 1782984781.849407
+    },
+    "ES0038": {
+      "cycle_id": "ES0038",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:33:01.863299+00:00",
+      "status": "completed",
+      "latency": 0.009327888488769531,
+      "is_fallback": false,
+      "recorded_at": 1782984781.863999
+    },
+    "W0039": {
+      "cycle_id": "W0039",
+      "type": "watchdog_skip",
+      "timestamp": "2026-07-02T09:37:30.200012+00:00",
+      "status": "skipped",
+      "heartbeat_elapsed": 0.00010704994201660156,
+      "recorded_at": 1782985050.200742
+    },
+    "S0040": {
+      "cycle_id": "S0040",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:37:31.224973+00:00",
+      "status": "completed",
+      "latency": 0.011494874954223633,
+      "is_fallback": false,
+      "recorded_at": 1782985051.225418
+    },
+    "ES0039": {
+      "cycle_id": "ES0039",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:37:31.240313+00:00",
+      "status": "completed",
+      "latency": 0.009937047958374023,
+      "is_fallback": false,
+      "recorded_at": 1782985051.241046
+    },
+    "ES0040": {
+      "cycle_id": "ES0040",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:37:49.798660+00:00",
+      "status": "completed",
+      "latency": 0.010950088500976562,
+      "is_fallback": false,
+      "recorded_at": 1782985069.7994711
+    },
+    "S0041": {
+      "cycle_id": "S0041",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:38:28.283213+00:00",
+      "status": "completed",
+      "latency": 0.0033948421478271484,
+      "is_fallback": false,
+      "recorded_at": 1782985108.2834408
+    },
+    "ES0041": {
+      "cycle_id": "ES0041",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:38:28.288218+00:00",
+      "status": "completed",
+      "latency": 0.003225088119506836,
+      "is_fallback": false,
+      "recorded_at": 1782985108.288448
+    },
+    "W0041": {
+      "cycle_id": "W0041",
+      "type": "watchdog_skip",
+      "timestamp": "2026-07-02T09:46:38.533102+00:00",
+      "status": "skipped",
+      "heartbeat_elapsed": 0.00045180320739746094,
+      "recorded_at": 1782985598.535168
+    },
+    "S0042": {
+      "cycle_id": "S0042",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:46:39.678618+00:00",
+      "status": "completed",
+      "latency": 0.007044076919555664,
+      "is_fallback": false,
+      "recorded_at": 1782985599.678924
+    },
+    "ES0042": {
+      "cycle_id": "ES0042",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:46:39.687150+00:00",
+      "status": "completed",
+      "latency": 0.004950046539306641,
+      "is_fallback": false,
+      "recorded_at": 1782985599.68752
+    },
+    "S0043": {
+      "cycle_id": "S0043",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:47:34.334610+00:00",
+      "status": "completed",
+      "latency": 0.00721287727355957,
+      "is_fallback": false,
+      "recorded_at": 1782985654.335362
+    },
+    "ES0043": {
+      "cycle_id": "ES0043",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:47:34.347933+00:00",
+      "status": "completed",
+      "latency": 0.006662130355834961,
+      "is_fallback": false,
+      "recorded_at": 1782985654.348612
+    },
+    "S0044": {
+      "cycle_id": "S0044",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:48:29.163223+00:00",
+      "status": "completed",
+      "latency": 0.00974893569946289,
+      "is_fallback": false,
+      "recorded_at": 1782985709.1640608
+    },
+    "ES0044": {
+      "cycle_id": "ES0044",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:48:29.177816+00:00",
+      "status": "completed",
+      "latency": 0.009099006652832031,
+      "is_fallback": false,
+      "recorded_at": 1782985709.1785128
+    },
+    "S0045": {
+      "cycle_id": "S0045",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:49:23.425573+00:00",
+      "status": "completed",
+      "latency": 0.01057887077331543,
+      "is_fallback": false,
+      "recorded_at": 1782985763.4263349
+    },
+    "ES0045": {
+      "cycle_id": "ES0045",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:49:24.483247+00:00",
+      "status": "completed",
+      "latency": 0.011785030364990234,
+      "is_fallback": false,
+      "recorded_at": 1782985764.483735
+    },
+    "S0046": {
+      "cycle_id": "S0046",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:50:18.262586+00:00",
+      "status": "completed",
+      "latency": 0.009752035140991211,
+      "is_fallback": false,
+      "recorded_at": 1782985818.263325
+    },
+    "ES0046": {
+      "cycle_id": "ES0046",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:50:19.368700+00:00",
+      "status": "completed",
+      "latency": 0.003879070281982422,
+      "is_fallback": false,
+      "recorded_at": 1782985819.3689752
+    },
+    "S0047": {
+      "cycle_id": "S0047",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:51:12.699862+00:00",
+      "status": "completed",
+      "latency": 0.009722232818603516,
+      "is_fallback": false,
+      "recorded_at": 1782985872.700742
+    },
+    "ES0047": {
+      "cycle_id": "ES0047",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:51:13.800049+00:00",
+      "status": "completed",
+      "latency": 0.0044400691986083984,
+      "is_fallback": false,
+      "recorded_at": 1782985873.8003788
+    },
+    "S0048": {
+      "cycle_id": "S0048",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:52:07.734946+00:00",
+      "status": "completed",
+      "latency": 0.009772062301635742,
+      "is_fallback": false,
+      "recorded_at": 1782985927.735945
+    },
+    "ES0048": {
+      "cycle_id": "ES0048",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:52:08.916297+00:00",
+      "status": "completed",
+      "latency": 0.00828695297241211,
+      "is_fallback": false,
+      "recorded_at": 1782985928.9165592
+    },
+    "S0049": {
+      "cycle_id": "S0049",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:53:01.822547+00:00",
+      "status": "completed",
+      "latency": 0.009732961654663086,
+      "is_fallback": false,
+      "recorded_at": 1782985981.823318
+    },
+    "ES0049": {
+      "cycle_id": "ES0049",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:53:05.062468+00:00",
+      "status": "completed",
+      "latency": 0.005151987075805664,
+      "is_fallback": false,
+      "recorded_at": 1782985985.062916
+    },
+    "S0050": {
+      "cycle_id": "S0050",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:53:56.206474+00:00",
+      "status": "completed",
+      "latency": 0.008363962173461914,
+      "is_fallback": false,
+      "recorded_at": 1782986036.2074702
+    },
+    "ES0050": {
+      "cycle_id": "ES0050",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:53:59.343896+00:00",
+      "status": "completed",
+      "latency": 0.0065457820892333984,
+      "is_fallback": false,
+      "recorded_at": 1782986039.344322
+    },
+    "S0051": {
+      "cycle_id": "S0051",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:54:50.639753+00:00",
+      "status": "completed",
+      "latency": 0.00809621810913086,
+      "is_fallback": false,
+      "recorded_at": 1782986090.6402829
+    },
+    "ES0051": {
+      "cycle_id": "ES0051",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:54:53.916311+00:00",
+      "status": "completed",
+      "latency": 0.010883092880249023,
+      "is_fallback": false,
+      "recorded_at": 1782986093.9170089
+    },
+    "S0052": {
+      "cycle_id": "S0052",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:55:45.420430+00:00",
+      "status": "completed",
+      "latency": 0.007874011993408203,
+      "is_fallback": false,
+      "recorded_at": 1782986145.420991
+    },
+    "ES0052": {
+      "cycle_id": "ES0052",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:55:48.642191+00:00",
+      "status": "completed",
+      "latency": 0.004940986633300781,
+      "is_fallback": false,
+      "recorded_at": 1782986148.643023
+    },
+    "S0053": {
+      "cycle_id": "S0053",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:56:40.027394+00:00",
+      "status": "completed",
+      "latency": 0.007668018341064453,
+      "is_fallback": false,
+      "recorded_at": 1782986200.028007
+    },
+    "ES0053": {
+      "cycle_id": "ES0053",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:56:43.282530+00:00",
+      "status": "completed",
+      "latency": 0.010647058486938477,
+      "is_fallback": false,
+      "recorded_at": 1782986203.283227
+    },
+    "S0054": {
+      "cycle_id": "S0054",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:57:34.088933+00:00",
+      "status": "completed",
+      "latency": 0.009705066680908203,
+      "is_fallback": false,
+      "recorded_at": 1782986254.089715
+    },
+    "ES0054": {
+      "cycle_id": "ES0054",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:57:38.442664+00:00",
+      "status": "completed",
+      "latency": 0.007765054702758789,
+      "is_fallback": false,
+      "recorded_at": 1782986258.443638
+    },
+    "S0055": {
+      "cycle_id": "S0055",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:58:29.078602+00:00",
+      "status": "completed",
+      "latency": 0.0061702728271484375,
+      "is_fallback": false,
+      "recorded_at": 1782986309.078984
+    },
+    "ES0055": {
+      "cycle_id": "ES0055",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:58:33.422370+00:00",
+      "status": "completed",
+      "latency": 0.010377168655395508,
+      "is_fallback": false,
+      "recorded_at": 1782986313.423429
+    },
+    "S0056": {
+      "cycle_id": "S0056",
+      "type": "signal",
+      "timestamp": "2026-07-02T09:59:23.535632+00:00",
+      "status": "completed",
+      "latency": 0.007982969284057617,
+      "is_fallback": false,
+      "recorded_at": 1782986363.536198
+    },
+    "ES0056": {
+      "cycle_id": "ES0056",
+      "type": "execution",
+      "timestamp": "2026-07-02T09:59:27.829280+00:00",
+      "status": "completed",
+      "latency": 0.010522127151489258,
+      "is_fallback": false,
+      "recorded_at": 1782986367.829688
+    },
+    "S0057": {
+      "cycle_id": "S0057",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:00:18.112832+00:00",
+      "status": "completed",
+      "latency": 0.009731054306030273,
+      "is_fallback": false,
+      "recorded_at": 1782986418.113496
+    },
+    "ES0057": {
+      "cycle_id": "ES0057",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:00:22.398478+00:00",
+      "status": "completed",
+      "latency": 0.012745857238769531,
+      "is_fallback": false,
+      "recorded_at": 1782986422.399393
+    },
+    "S0058": {
+      "cycle_id": "S0058",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:01:12.905112+00:00",
+      "status": "completed",
+      "latency": 0.009155035018920898,
+      "is_fallback": false,
+      "recorded_at": 1782986472.906077
+    },
+    "ES0058": {
+      "cycle_id": "ES0058",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:01:17.198358+00:00",
+      "status": "completed",
+      "latency": 0.01392221450805664,
+      "is_fallback": false,
+      "recorded_at": 1782986477.198912
+    },
+    "S0059": {
+      "cycle_id": "S0059",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:02:07.415722+00:00",
+      "status": "completed",
+      "latency": 0.008968114852905273,
+      "is_fallback": false,
+      "recorded_at": 1782986527.416332
+    },
+    "ES0059": {
+      "cycle_id": "ES0059",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:02:11.749529+00:00",
+      "status": "completed",
+      "latency": 0.012052059173583984,
+      "is_fallback": false,
+      "recorded_at": 1782986531.750446
+    },
+    "S0060": {
+      "cycle_id": "S0060",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:03:01.963593+00:00",
+      "status": "completed",
+      "latency": 0.009272098541259766,
+      "is_fallback": false,
+      "recorded_at": 1782986581.9641469
+    },
+    "ES0060": {
+      "cycle_id": "ES0060",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:03:06.347031+00:00",
+      "status": "completed",
+      "latency": 0.0056841373443603516,
+      "is_fallback": false,
+      "recorded_at": 1782986586.347393
+    },
+    "S0061": {
+      "cycle_id": "S0061",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:03:56.868344+00:00",
+      "status": "completed",
+      "latency": 0.007501125335693359,
+      "is_fallback": false,
+      "recorded_at": 1782986636.868889
+    },
+    "ES0061": {
+      "cycle_id": "ES0061",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:04:01.140021+00:00",
+      "status": "completed",
+      "latency": 0.007930994033813477,
+      "is_fallback": false,
+      "recorded_at": 1782986641.141344
+    },
+    "S0062": {
+      "cycle_id": "S0062",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:04:51.358076+00:00",
+      "status": "completed",
+      "latency": 0.008446216583251953,
+      "is_fallback": false,
+      "recorded_at": 1782986691.359354
+    },
+    "ES0062": {
+      "cycle_id": "ES0062",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:04:55.638351+00:00",
+      "status": "completed",
+      "latency": 0.0072901248931884766,
+      "is_fallback": false,
+      "recorded_at": 1782986695.640237
+    },
+    "S0063": {
+      "cycle_id": "S0063",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:05:46.264269+00:00",
+      "status": "completed",
+      "latency": 0.008588790893554688,
+      "is_fallback": false,
+      "recorded_at": 1782986746.265431
+    },
+    "ES0063": {
+      "cycle_id": "ES0063",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:05:51.984140+00:00",
+      "status": "completed",
+      "latency": 0.006628751754760742,
+      "is_fallback": false,
+      "recorded_at": 1782986751.984698
+    },
+    "S0064": {
+      "cycle_id": "S0064",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:06:40.597583+00:00",
+      "status": "completed",
+      "latency": 0.009003877639770508,
+      "is_fallback": false,
+      "recorded_at": 1782986800.5981
+    },
+    "ES0064": {
+      "cycle_id": "ES0064",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:06:47.455769+00:00",
+      "status": "completed",
+      "latency": 0.008626937866210938,
+      "is_fallback": false,
+      "recorded_at": 1782986807.4565492
+    },
+    "S0065": {
+      "cycle_id": "S0065",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:07:35.067819+00:00",
+      "status": "completed",
+      "latency": 0.009084224700927734,
+      "is_fallback": false,
+      "recorded_at": 1782986855.068652
+    },
+    "ES0065": {
+      "cycle_id": "ES0065",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:07:43.177370+00:00",
+      "status": "completed",
+      "latency": 0.008942842483520508,
+      "is_fallback": false,
+      "recorded_at": 1782986863.178127
+    },
+    "S0066": {
+      "cycle_id": "S0066",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:08:29.935014+00:00",
+      "status": "completed",
+      "latency": 0.009756088256835938,
+      "is_fallback": false,
+      "recorded_at": 1782986909.93571
+    },
+    "ES0066": {
+      "cycle_id": "ES0066",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:08:38.049810+00:00",
+      "status": "completed",
+      "latency": 0.012176036834716797,
+      "is_fallback": false,
+      "recorded_at": 1782986918.050365
+    },
+    "S0067": {
+      "cycle_id": "S0067",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:09:24.066169+00:00",
+      "status": "completed",
+      "latency": 0.009638071060180664,
+      "is_fallback": false,
+      "recorded_at": 1782986964.066824
+    },
+    "ES0067": {
+      "cycle_id": "ES0067",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:09:33.253777+00:00",
+      "status": "completed",
+      "latency": 0.011049985885620117,
+      "is_fallback": false,
+      "recorded_at": 1782986973.254766
+    },
+    "S0068": {
+      "cycle_id": "S0068",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:10:40.774019+00:00",
+      "status": "completed",
+      "latency": 0.0034780502319335938,
+      "is_fallback": false,
+      "recorded_at": 1782987040.774286
+    },
+    "ES0068": {
+      "cycle_id": "ES0068",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:10:40.779397+00:00",
+      "status": "completed",
+      "latency": 0.003306865692138672,
+      "is_fallback": false,
+      "recorded_at": 1782987040.779646
+    },
+    "S0069": {
+      "cycle_id": "S0069",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:11:41.533902+00:00",
+      "status": "completed",
+      "latency": 0.021410703659057617,
+      "is_fallback": false,
+      "recorded_at": 1782987101.534304
+    },
+    "ES0069": {
+      "cycle_id": "ES0069",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:11:41.550927+00:00",
+      "status": "completed",
+      "latency": 0.012858867645263672,
+      "is_fallback": false,
+      "recorded_at": 1782987101.5516741
+    },
+    "S0070": {
+      "cycle_id": "S0070",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:12:35.857691+00:00",
+      "status": "completed",
+      "latency": 0.01003718376159668,
+      "is_fallback": false,
+      "recorded_at": 1782987155.8585432
+    },
+    "ES0070": {
+      "cycle_id": "ES0070",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:12:35.873759+00:00",
+      "status": "completed",
+      "latency": 0.009921789169311523,
+      "is_fallback": false,
+      "recorded_at": 1782987155.8745039
+    },
+    "S0071": {
+      "cycle_id": "S0071",
+      "type": "signal",
+      "timestamp": "2026-07-02T10:13:30.009720+00:00",
+      "status": "completed",
+      "latency": 0.010203123092651367,
+      "is_fallback": false,
+      "recorded_at": 1782987210.010498
+    },
+    "ES0071": {
+      "cycle_id": "ES0071",
+      "type": "execution",
+      "timestamp": "2026-07-02T10:13:30.022896+00:00",
+      "status": "completed",
+      "latency": 0.007993936538696289,
+      "is_fallback": false,
+      "recorded_at": 1782987210.0234509
+    }
+  },
+  "last_health": {
+    "uptime_seconds": 5073.1,
+    "cycle_count": 71,
+    "queue_length": 0,
+    "last_signal_time": "2026-07-02T18:13:30.007013",
+    "last_execution_time": "2026-07-02T18:13:30.022804",
+    "last_error": null,
+    "signal_count_since_report": 71,
+    "report_signal_threshold": 5,
+    "watchdog": {
+      "enabled": true,
+      "elapsed_since_last_beat": 2.1,
+      "skipped_count": 6,
+      "consecutive_skips": 0
+    },
+    "runtime_mode": "stable",
+    "module_stats": {
+      "signal": {
+        "ok": 71,
+        "fail": 0,
+        "avg_latency": 0.01
+      },
+      "decision": {
+        "ok": 0,
+        "fail": 0,
+        "avg_latency": 0.0
+      },
+      "execution": {
+        "ok": 71,
+        "fail": 0,
+        "avg_latency": 0.01
+      },
+      "report": {
+        "ok": 0,
+        "fail": 0,
+        "avg_latency": 0.0
+      }
+    },
+    "recorded_at": 1782987212.1474261
+  }
+}

@@ -32,7 +32,7 @@ from typing import Any
 from decision_engine import DecisionEngine, DecisionAction
 from execution_engine import ExecutionEngine, OrderStatus, TransactionCostModel
 from risk_engine import RiskEngine, RiskLevel
-from signal_engine import SignalEngine, SignalType
+from signal_engine import Signal, SignalEngine, SignalType
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +216,8 @@ class BacktestEngine:
         config: BacktestConfig | None = None,
         cost_model: TransactionCostModel | None = None,
     ):
+        self._deterministic = deterministic
+        self._seed = seed
         self._initial_cash = initial_cash
         self._config = config or BacktestConfig()
         self._signal_engine = SignalEngine()
@@ -227,15 +229,173 @@ class BacktestEngine:
         )
         self._cost_model = cost_model or TransactionCostModel()
         self._rng = random.Random(seed) if deterministic else random.Random()
+        self.equity_curve: list[Decimal] = []
+        self.pnl_history: list[Decimal] = []
+        self._last_historical_data: dict[
+            str, list[tuple[Decimal, str]]
+        ] | None = None
+        self._strategy_overrides: dict[str, float] = {}
+        self._suppress_reports = False
+        self.signal_stats: dict[str, int] = {
+            "BUY": 0,
+            "SELL": 0,
+            "HOLD": 0,
+            "REDUCE": 0,
+            "RISK_OFF": 0,
+        }
 
     # ------------------------------------------------------------------
     # 公共接口
     # ------------------------------------------------------------------
 
+    def get_equity_curve(self) -> list[Decimal]:
+        """返回最近一次回测的净值曲线（每步 portfolio value）。"""
+        return list(self.equity_curve)
+
+    def get_analysis(self) -> dict:
+        """返回最近一次回测的策略绩效分析。"""
+        from analytics_engine import AnalyticsEngine
+
+        return AnalyticsEngine(
+            equity_curve=self.equity_curve,
+            pnl_history=self.pnl_history,
+        ).analyze()
+
+    def run_with_config(
+        self,
+        config: dict[str, float],
+        historical_data: dict[str, list[tuple[Decimal, str]]] | None = None,
+    ) -> MultiSymbolBacktestResult:
+        """使用临时策略参数运行回测，不改变 SignalEngine 主逻辑。"""
+        required = {
+            "momentum_threshold",
+            "volatility_threshold",
+            "risk_penalty",
+            "mean_reversion_threshold",
+        }
+        missing = required.difference(config)
+        if missing:
+            raise ValueError(
+                f"Missing strategy config values: {', '.join(sorted(missing))}"
+            )
+
+        data = historical_data or self._last_historical_data
+        if data is None:
+            raise ValueError(
+                "No historical data available. Run the backtest once or "
+                "provide historical_data."
+            )
+
+        momentum = float(config["momentum_threshold"])
+        volatility = float(config["volatility_threshold"])
+        risk_penalty = float(config["risk_penalty"])
+        mean_reversion = float(config["mean_reversion_threshold"])
+        if momentum <= 0.0 or volatility <= 0.0 or risk_penalty <= 0.0:
+            raise ValueError(
+                "momentum_threshold, volatility_threshold, and "
+                "risk_penalty must be positive."
+            )
+        if mean_reversion >= 0.0:
+            raise ValueError("mean_reversion_threshold must be negative.")
+
+        original_momentum = self._signal_engine.MOMENTUM_BUY_THRESHOLD
+        original_reversion = self._signal_engine.REVERSION_SELL_THRESHOLD
+        original_overrides = self._strategy_overrides
+        original_suppress = self._suppress_reports
+
+        try:
+            self._strategy_overrides = dict(config)
+            self._signal_engine.MOMENTUM_BUY_THRESHOLD = Decimal(
+                str(momentum * 100.0)
+            )
+            self._signal_engine.REVERSION_SELL_THRESHOLD = Decimal(
+                str(mean_reversion * 100.0)
+            )
+            self._execution_engine = ExecutionEngine(
+                deterministic=True,
+                seed=self._seed,
+                cost_model=self._cost_model,
+            )
+            # 参数搜索不模拟真实等待，并使用固定滑点，确保无随机扰动。
+            self._execution_engine._sleep_ms = lambda _milliseconds: None
+            self._execution_engine._simulate_slippage = lambda: Decimal("0.002")
+            self._risk_engine = RiskEngine()
+            self._suppress_reports = True
+            return self.run(data)
+        finally:
+            self._signal_engine.MOMENTUM_BUY_THRESHOLD = original_momentum
+            self._signal_engine.REVERSION_SELL_THRESHOLD = original_reversion
+            self._strategy_overrides = original_overrides
+            self._suppress_reports = original_suppress
+
+    def _print_analysis(self) -> None:
+        """打印最近一次回测的绩效报告。"""
+        analysis = self.get_analysis()
+        print("=== Performance Report ===")
+        print(f"Total Return: {analysis['total_return']:.2%}")
+        print(f"Max Drawdown: {analysis['max_drawdown']:.2%}")
+        print(f"Sharpe Ratio: {analysis['sharpe_ratio']:.2f}")
+        print(f"Win Rate: {analysis['win_rate']:.2%}")
+        print(f"Profit Factor: {analysis['profit_factor']:.2f}")
+
+    def get_diagnostics(self) -> dict:
+        """返回策略诊断报告。
+
+        Returns:
+            dict with keys:
+                - signal_distribution: dict of signal_type → count
+                - total_trades: BUY + SELL + REDUCE 总数
+                - hold_ratio: HOLD / total_steps (需要 set_diagnostics_total_steps 先设置)
+                - risk_events: RISK_OFF 计数
+        """
+        total_trades = (
+            self.signal_stats["BUY"]
+            + self.signal_stats["SELL"]
+            + self.signal_stats["REDUCE"]
+        )
+        total_steps = getattr(self, "_diagnostics_total_steps", 0)
+        hold_ratio = (
+            self.signal_stats["HOLD"] / total_steps
+            if total_steps > 0
+            else 0.0
+        )
+        return {
+            "signal_distribution": dict(self.signal_stats),
+            "total_trades": total_trades,
+            "hold_ratio": hold_ratio,
+            "risk_events": self.signal_stats["RISK_OFF"],
+        }
+
+    def _print_diagnostics(self) -> None:
+        """打印策略诊断报告到 stdout。"""
+        diag = self.get_diagnostics()
+        dist = diag["signal_distribution"]
+        hold_ratio_pct = diag["hold_ratio"] * 100
+
+        print()
+        print("=" * 40)
+        print("  === Strategy Diagnostics ===")
+        print("=" * 40)
+        for sig_type in ("BUY", "SELL", "HOLD", "REDUCE", "RISK_OFF"):
+            print(f"  {sig_type}: {dist.get(sig_type, 0)}")
+        print(f"  Hold Ratio: {hold_ratio_pct:.1f}%")
+        print(f"  Total Trades: {diag['total_trades']}")
+        print(f"  Risk Events: {diag['risk_events']}")
+        print("=" * 40)
+        print()
+
     def run(
         self,
         historical_data: dict[str, list[tuple[Decimal, str]]],
     ) -> MultiSymbolBacktestResult:
+        self._last_historical_data = {
+            symbol: list(series)
+            for symbol, series in historical_data.items()
+        }
+        # 重置信号统计
+        self.signal_stats = {k: 0 for k in self.signal_stats}
+        total_steps = sum(len(v) for v in historical_data.values())
+
         symbol_results: dict[str, BacktestResult] = {}
         for symbol, price_series in historical_data.items():
             symbol_results[symbol] = self._run_single(symbol, price_series)
@@ -245,6 +405,15 @@ class BacktestEngine:
             if symbol_results else 0.0
         )
         total_trades = sum(r.trade_count for r in symbol_results.values())
+
+        # B2: 保存 total_steps 供 get_diagnostics() 使用
+        self._diagnostics_total_steps = total_steps
+
+        # B2: 输出策略诊断报告
+        if not self._suppress_reports:
+            self._print_diagnostics()
+            self._print_analysis()
+
         return MultiSymbolBacktestResult(
             symbol_results=symbol_results,
             total_return=total_return,
@@ -261,7 +430,9 @@ class BacktestEngine:
         symbol: str,
         price_series: list[tuple[Decimal, str]],
     ) -> BacktestResult:
-        return self._run_single(symbol, price_series)
+        result = self._run_single(symbol, price_series)
+        self._print_analysis()
+        return result
 
     def run_with_split(
         self,
@@ -311,6 +482,8 @@ class BacktestEngine:
         max_win_trade = Decimal("0")
 
         if not price_series:
+            self.equity_curve = []
+            self.pnl_history = []
             return BacktestResult(initial_cash=self._initial_cash, final_cash=cash, final_equity=cash)
 
         prices_only = [p for p, _ in price_series]
@@ -402,6 +575,30 @@ class BacktestEngine:
                 else:
                     signal_list = self._signal_engine.evaluate({symbol: price_result})
 
+                volatility_threshold = self._strategy_overrides.get(
+                    "volatility_threshold"
+                )
+                daily_change = (
+                    abs(float((price - prev_price) / prev_price))
+                    if prev_price != Decimal("0")
+                    else 0.0
+                )
+                if (
+                    volatility_threshold is not None
+                    and daily_change >= float(volatility_threshold)
+                ):
+                    signal_list = [Signal(
+                        symbol=symbol,
+                        signal_type=SignalType.REDUCE,
+                        strength=80,
+                        confidence=0.8,
+                        reason=(
+                            f"Volatility {daily_change:.4f} reached optimizer "
+                            f"threshold {float(volatility_threshold):.4f}."
+                        ),
+                        source="optimizer_config",
+                    )]
+
             if not signal_list:
                 equity = cash + position_qty * price
                 equity_curve.append(equity)
@@ -409,6 +606,12 @@ class BacktestEngine:
                 continue
 
             signal = signal_list[0]
+
+            # B2: 记录信号分布统计
+            sig_type = signal.signal_type.value
+            if sig_type in self.signal_stats:
+                self.signal_stats[sig_type] += 1
+
             risk_decisions = self._risk_engine.evaluate(signal_list)
             risk_decision = risk_decisions[0] if risk_decisions else None
 
@@ -461,7 +664,10 @@ class BacktestEngine:
             requested_qty = cfg.fixed_qty
             if requested_qty is None and decision.action == DecisionAction.BUY:
                 stop_dist = cfg.stop_loss_pct / Decimal("100")
-                risk_cash = total_value * cfg.max_risk_ratio
+                risk_penalty = Decimal(str(
+                    self._strategy_overrides.get("risk_penalty", 1.0)
+                ))
+                risk_cash = total_value * cfg.max_risk_ratio / risk_penalty
                 if stop_dist > Decimal("0") and price > Decimal("0"):
                     qty_raw = risk_cash / (price * stop_dist)
                     qty_raw = qty_raw.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
@@ -559,6 +765,10 @@ class BacktestEngine:
             if eq > running_peak: running_peak = eq
             dd = (running_peak - eq) / running_peak * Decimal("100") if running_peak > Decimal("0") else Decimal("0")
             if dd > max_drawdown: max_drawdown = dd
+
+        # 保存最近一次回测的净值曲线与逐笔已实现盈亏
+        self.equity_curve = list(equity_curve)
+        self.pnl_history = list(trade_pnls)
 
         return BacktestResult(
             total_return=total_return,

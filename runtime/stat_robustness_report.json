@@ -1,0 +1,97 @@
+{
+  "robustness_ranking": [
+    {
+      "strategy": "MeanReversionStrategy",
+      "classification": "significant",
+      "passed": true,
+      "alpha_mean": 0.5,
+      "alpha_std": 0.0,
+      "alpha_p_value": 0.009901,
+      "confidence_interval": [
+        0.5,
+        0.5
+      ],
+      "noise_sensitivity": {
+        "levels": [
+          {
+            "noise_std": 0.5,
+            "alpha": 0.5
+          },
+          {
+            "noise_std": 1.0,
+            "alpha": 0.5
+          },
+          {
+            "noise_std": 2.0,
+            "alpha": 0.5
+          }
+        ],
+        "stable": true
+      },
+      "bootstrap": {
+        "samples": 100,
+        "alpha_mean": 0.5,
+        "alpha_std": 0.0,
+        "confidence_interval": [
+          0.5,
+          0.5
+        ]
+      },
+      "permutation": {
+        "permutations": 100,
+        "observed_alpha": 0.5,
+        "null_alpha_mean": -0.001778,
+        "p_value": 0.009901
+      }
+    },
+    {
+      "strategy": "MomentumStrategy",
+      "classification": "stable",
+      "passed": true,
+      "alpha_mean": 0.082586,
+      "alpha_std": 0.065531,
+      "alpha_p_value": 0.089109,
+      "confidence_interval": [
+        -0.051724,
+        0.206897
+      ],
+      "noise_sensitivity": {
+        "levels": [
+          {
+            "noise_std": 0.5,
+            "alpha": 0.137931
+          },
+          {
+            "noise_std": 1.0,
+            "alpha": 0.103448
+          },
+          {
+            "noise_std": 2.0,
+            "alpha": 0.103448
+          }
+        ],
+        "stable": true
+      },
+      "bootstrap": {
+        "samples": 100,
+        "alpha_mean": 0.082586,
+        "alpha_std": 0.065531,
+        "confidence_interval": [
+          -0.051724,
+          0.206897
+        ]
+      },
+      "permutation": {
+        "permutations": 100,
+        "observed_alpha": 0.103448,
+        "null_alpha_mean": -0.005596,
+        "p_value": 0.089109
+      }
+    }
+  ],
+  "all_strategies_passed": true,
+  "significance_rules": {
+    "significant": "p < 0.05",
+    "likely_noise": "p > 0.1"
+  }
+}

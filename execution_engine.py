@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ExecutionEngine — 模拟交易执行层 (Paper Trading Only).
+ExecutionEngine — 模拟交易执行层 (Paper Trading Only). V4 Phase 0.
 
 架构说明
 --------
@@ -15,22 +15,23 @@ ExecutionEngine 是 SignalEngine → RiskEngine → DecisionEngine → Execution
 - 所有价格和成交均为模拟
 
 订单生命周期
--------------
-Decision → submit_order() → PENDING
-                          → simulate_fill() → FILLED (含滑点)
-                          → reject_order() → REJECTED
-                          → partial_fill() → FILLED (部分成交)
+------------
+Decision → submit_order() → publish ORDER_SUBMITTED
+                          → BUY/SELL  → FILLED (含滑点)
+                          → HOLD     → NO_OP
+                          → BLOCKED  → REJECTED
+                          → REDUCE   → PARTIAL (50% 成交)
 
 执行规则
----------
-- BUY    → 市价 + 滑点 (0~0.1%)
-- SELL   → 市价 - 滑点
+--------
+- BUY    → 市价 + 滑点 (0.1%~0.3%)
+- SELL   → 市价 - 滑点 (0.1%~0.3%)
 - BLOCKED → REJECTED
-- HOLD   → 不执行 (返回 None)
-- REDUCE → 部分减仓
+- HOLD   → 不执行 (返回 NO_OP)
+- REDUCE → 部分减仓 (50% qty)
 
 安全约束
----------
+--------
 - 不连接任何 broker
 - 不访问 API
 - 不修改 DecisionEngine / RiskEngine / SignalEngine
@@ -62,6 +63,7 @@ class OrderStatus(str, Enum):
     FILLED = "FILLED"
     REJECTED = "REJECTED"
     PARTIAL = "PARTIAL"
+    NO_OP = "NO_OP"
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +80,7 @@ class ExecutionResult:
     action: str                # DecisionAction value
     status: OrderStatus
     fill_price: Decimal | None = None
-    slippage: Decimal | None = None      # 滑点比例 (0=无滑点)
+    slippage: Decimal | None = None      # 滑点比例
     filled_qty: Decimal | None = None
     requested_qty: Decimal | None = None
     reject_reason: str = ""
@@ -148,11 +150,11 @@ class TransactionCostModel:
 
 
 class ExecutionEngine:
-    """模拟交易执行引擎 (Paper Trading Only)."""
+    """模拟交易执行引擎 (Paper Trading Only). V4 Phase 0."""
 
-    # 滑点范围 (用于随机模式)
-    MIN_SLIPPAGE = Decimal("0.000")    # 0%
-    MAX_SLIPPAGE = Decimal("0.001")    # 0.1%
+    # 滑点范围: 0.1% ~ 0.3%
+    MIN_SLIPPAGE = Decimal("0.001")    # 0.1%
+    MAX_SLIPPAGE = Decimal("0.003")    # 0.3%
 
     # 部分成交比例 (REDUCE 时)
     REDUCE_FILL_RATIO = Decimal("0.5")  # 减仓一半
@@ -184,7 +186,7 @@ class ExecutionEngine:
         decision: Decision,
         market_price: Decimal,
         requested_qty: Decimal | None = None,
-    ) -> ExecutionResult | None:
+    ) -> ExecutionResult:
         """提交订单进行模拟执行。
 
         Args:
@@ -193,16 +195,34 @@ class ExecutionEngine:
             requested_qty: 请求数量（可选，默认 100 股）
 
         Returns:
-            ExecutionResult 或 None（HOLD 不执行）
+            ExecutionResult
         """
         self._order_counter += 1
         order_id = f"SIM-{self._order_counter:06d}"
 
         action = decision.action
+        qty = requested_qty or Decimal("100")
 
-        # HOLD → 不执行
+        # 发布 ORDER_SUBMITTED 事件
+        submit_payload = {
+            "order_id": order_id,
+            "symbol": decision.symbol,
+            "action": action.value,
+            "requested_qty": str(qty),
+            "market_price": str(market_price),
+        }
+        event_bus.publish(ORDER_SUBMITTED, {"execution_order": submit_payload})
+
+        # HOLD → NO_OP
         if action == DecisionAction.HOLD:
-            return None
+            result = ExecutionResult(
+                order_id=order_id,
+                symbol=decision.symbol,
+                action=action.value,
+                status=OrderStatus.NO_OP,
+                requested_qty=qty,
+            )
+            return result
 
         # BLOCKED → REJECTED
         if action == DecisionAction.BLOCKED:
@@ -210,7 +230,6 @@ class ExecutionEngine:
             event_bus.publish(ORDER_REJECTED, {"execution_result": result.to_dict()})
             return result
 
-        qty = requested_qty or Decimal("100")
         latency = self._simulate_latency()
 
         # BUY / SELL → 尝试成交
@@ -274,6 +293,16 @@ class ExecutionEngine:
         order_id = f"SIM-FILL-{self._order_counter:06d}"
         self._order_counter += 1
 
+        # 发布 ORDER_SUBMITTED 事件
+        submit_payload = {
+            "order_id": order_id,
+            "symbol": decision.symbol,
+            "action": decision.action.value,
+            "requested_qty": str(qty),
+            "market_price": str(market_price),
+        }
+        event_bus.publish(ORDER_SUBMITTED, {"execution_order": submit_payload})
+
         result = ExecutionResult(
             order_id=order_id,
             symbol=decision.symbol,
@@ -295,7 +324,18 @@ class ExecutionEngine:
         """手动拒绝订单。"""
         order_id = f"SIM-REJ-{self._order_counter:06d}"
         self._order_counter += 1
-        return self._reject_order(order_id, decision, reason)
+
+        # 发布 ORDER_SUBMITTED 事件
+        submit_payload = {
+            "order_id": order_id,
+            "symbol": decision.symbol,
+            "action": decision.action.value,
+        }
+        event_bus.publish(ORDER_SUBMITTED, {"execution_order": submit_payload})
+
+        result = self._reject_order(order_id, decision, reason)
+        event_bus.publish(ORDER_REJECTED, {"execution_result": result.to_dict()})
+        return result
 
     def partial_fill(
         self,
@@ -306,6 +346,16 @@ class ExecutionEngine:
         """模拟部分成交。"""
         order_id = f"SIM-PARTIAL-{self._order_counter:06d}"
         self._order_counter += 1
+
+        # 发布 ORDER_SUBMITTED 事件
+        submit_payload = {
+            "order_id": order_id,
+            "symbol": decision.symbol,
+            "action": decision.action.value,
+            "market_price": str(market_price),
+        }
+        event_bus.publish(ORDER_SUBMITTED, {"execution_order": submit_payload})
+
         slippage = self._simulate_slippage()
         is_buy = decision.action == DecisionAction.BUY
         fill_price = self._calc_fill_price(market_price, slippage, is_buy)
@@ -339,7 +389,7 @@ class ExecutionEngine:
         )
 
     def _simulate_slippage(self) -> Decimal:
-        """生成随机滑点 (0~0.1%)。"""
+        """生成随机滑点 (0.1%~0.3%)。"""
         raw = self._rng.random()  # 0.0 ~ 1.0
         slippage = self.MIN_SLIPPAGE + (self.MAX_SLIPPAGE - self.MIN_SLIPPAGE) * Decimal(str(raw))
         return slippage

@@ -1,0 +1,19 @@
+{
+  "cycle_id": "000316",
+  "timestamp": "2026-07-02T07:34:04.965348+00:00",
+  "source": "realtime_sim",
+  "signals": [
+    {
+      "symbol": "AMZN",
+      "price": 190.27,
+      "volume": 89535,
+      "timestamp": "2026-07-02T07:34:04.965302+00:00",
+      "action": "SELL",
+      "score": 22,
+      "source": "realtime_sim",
+      "signal_ok": 58,
+      "exec_ok": 58,
+      "delta": 1
+    }
+  ]
+}

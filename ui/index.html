@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>B8 量化分析平台</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1923; color: #e0e6ed; min-height: 100vh; }
+.nav { background: #1a2d3d; padding: 12px 24px; display: flex; align-items: center; gap: 20px; border-bottom: 1px solid #2a3d4d; }
+.nav h1 { font-size: 18px; color: #4fc3f7; }
+.nav a { color: #8899aa; text-decoration: none; font-size: 14px; padding: 6px 14px; border-radius: 4px; cursor: pointer; }
+.nav a:hover, .nav a.active { background: #2a3d4d; color: #4fc3f7; }
+.nav .refresh-btn { margin-left: auto; background: #2a5a7a; border: none; color: #fff; padding: 6px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; }
+.nav .refresh-btn:hover { background: #3a7aaa; }
+.container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* Cards */
+.card { background: #1a2d3d; border-radius: 8px; padding: 20px; margin-bottom: 16px; border: 1px solid #2a3d4d; }
+.card h2 { font-size: 15px; color: #4fc3f7; margin-bottom: 12px; }
+
+/* Metrics grid */
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.metric { background: #1a2d3d; border-radius: 6px; padding: 14px; text-align: center; border: 1px solid #2a3d4d; }
+.metric .value { font-size: 22px; font-weight: 600; color: #4fc3f7; }
+.metric .label { font-size: 11px; color: #667788; margin-top: 4px; text-transform: uppercase; }
+.metric .value.positive { color: #4caf50; }
+.metric .value.negative { color: #f44336; }
+
+/* Canvas */
+canvas { width: 100%; height: 320px; background: #0f1923; border-radius: 6px; border: 1px solid #2a3d4d; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #2a3d4d; }
+th { color: #667788; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+td { font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; }
+tr:hover td { background: #1f3345; }
+
+/* Trades list */
+.trade-list { max-height: 300px; overflow-y: auto; }
+.trade-item { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1a2d3d; font-size: 12px; }
+.trade-item .action { font-weight: 600; padding: 1px 6px; border-radius: 3px; }
+.action.BUY { color: #4caf50; background: #1a3a2a; }
+.action.SELL { color: #f44336; background: #3a1a1a; }
+.action.REDUCE { color: #ff9800; background: #3a2a1a; }
+.action.stop_loss { color: #f44336; background: #3a1a1a; }
+.action.take_profit { color: #4caf50; background: #1a3a2a; }
+
+/* Signal bar */
+.signal-bar { display: flex; gap: 4px; margin: 8px 0; }
+.signal-seg { flex: 1; height: 20px; border-radius: 3px; text-align: center; font-size: 10px; line-height: 20px; color: #fff; }
+
+/* Strategy cards */
+.strategy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.strategy-card { background: #0f1923; border-radius: 6px; padding: 14px; border: 1px solid #2a3d4d; }
+.strategy-card h3 { font-size: 14px; margin-bottom: 6px; }
+.strategy-card .params { font-size: 12px; color: #8899aa; }
+.strategy-card .score { font-size: 18px; font-weight: 600; }
+
+/* Playback */
+.playback-controls { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.playback-controls button { background: #2a5a7a; border: none; color: #fff; padding: 4px 12px; border-radius: 4px; cursor: pointer; }
+.playback-controls input[type="range"] { flex: 1; }
+
+/* Symbol input */
+.symbol-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.symbol-bar input { background: #0f1923; border: 1px solid #2a3d4d; color: #e0e6ed; padding: 8px 12px; border-radius: 4px; font-size: 14px; width: 120px; }
+.symbol-bar button { background: #2a5a7a; border: none; color: #fff; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+
+/* Compare */
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <h1>📊 B8 Quant Platform</h1>
+  <a class="active" onclick="showPage('dashboard')">Dashboard</a>
+  <a onclick="showPage('explorer')">Strategy Explorer</a>
+  <a onclick="showPage('backtest')">Backtest Viewer</a>
+  <a onclick="showPage('report')">Report Viewer</a>
+  <button class="refresh-btn" onclick="refreshAll()">↻ Refresh</button>
+</div>
+
+<div class="container">
+
+<!-- ===================== DASHBOARD ===================== -->
+<div id="page-dashboard" class="page active">
+  <div class="symbol-bar">
+    <input id="sym-dash" value="NVDA" placeholder="Symbol">
+    <button onclick="refreshDashboard()">Load</button>
+  </div>
+  <div class="metrics" id="dash-metrics"></div>
+  <div class="card">
+    <h2>Equity Curve</h2>
+    <canvas id="dash-equity"></canvas>
+  </div>
+  <div class="card">
+    <h2>Signal Distribution</h2>
+    <div id="dash-signals"></div>
+  </div>
+  <div class="card">
+    <h2>Best Config</h2>
+    <pre id="dash-config" style="font-size:13px;color:#8899aa;"></pre>
+  </div>
+</div>
+
+<!-- ===================== STRATEGY EXPLORER ===================== -->
+<div id="page-explorer" class="page">
+  <div class="symbol-bar">
+    <input id="sym-exp" value="NVDA" placeholder="Symbol">
+    <button onclick="refreshExplorer()">Load</button>
+  </div>
+  <div class="card">
+    <h2>All Strategies <span id="exp-count" style="color:#8899aa;font-size:12px;"></span></h2>
+    <div class="strategy-grid" id="exp-grid"></div>
+  </div>
+</div>
+
+<!-- ===================== BACKTEST VIEWER ===================== -->
+<div id="page-backtest" class="page">
+  <div class="symbol-bar">
+    <input id="sym-bt" value="NVDA" placeholder="Symbol">
+    <button onclick="refreshBacktest()">Load</button>
+  </div>
+  <div class="metrics" id="bt-metrics"></div>
+  <div class="card">
+    <h2>Equity Curve + Trade Markers</h2>
+    <canvas id="bt-equity"></canvas>
+    <div class="playback-controls">
+      <button onclick="btPlay()">▶ Play</button>
+      <button onclick="btReset()">⏹ Reset</button>
+      <input type="range" id="bt-slider" min="0" max="100" value="100" oninput="btSeek(this.value)">
+      <span id="bt-step-label" style="font-size:12px;color:#667788;"></span>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Trade Timeline</h2>
+    <div class="trade-list" id="bt-trades"></div>
+  </div>
+</div>
+
+<!-- ===================== REPORT VIEWER ===================== -->
+<div id="page-report" class="page">
+  <div class="symbol-bar">
+    <input id="sym-rpt" value="NVDA" placeholder="Symbol">
+    <button onclick="refreshReport()">Load</button>
+  </div>
+  <div class="metrics" id="rpt-metrics"></div>
+  <div class="card">
+    <h2>Risk Metrics</h2>
+    <div class="compare-grid" id="rpt-risk"></div>
+  </div>
+  <div class="card">
+    <h2>Signal Breakdown</h2>
+    <div id="rpt-signals"></div>
+  </div>
+  <div class="card">
+    <h2>Equity Curve</h2>
+    <canvas id="rpt-equity"></canvas>
+  </div>
+  <div class="card">
+    <h2>Optimizer Results</h2>
+    <pre id="rpt-opt" style="font-size:12px;color:#8899aa;max-height:200px;overflow-y:auto;"></pre>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+// ===================== STATE =====================
+const API = 'http://localhost:8000';
+let state = {
+  backtest: null,
+  optimizer: null,
+  report: null,
+  strategies: [],
+  btPlayTimer: null,
+  btCurrentStep: 100,
+};
+
+// ===================== NAV =====================
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+  document.querySelectorAll('.nav a').forEach(a => {
+    if (a.textContent.toLowerCase().includes(name) || 
+        (name === 'dashboard' && a.textContent.includes('Dashboard')) ||
+        (name === 'explorer' && a.textContent.includes('Explorer')) ||
+        (name === 'backtest' && a.textContent.includes('Backtest')) ||
+        (name === 'report' && a.textContent.includes('Report'))) {
+      a.classList.add('active');
+    }
+  });
+}
+
+// ===================== API CALLS =====================
+async function apiGet(path, symbol) {
+  const url = symbol ? `${API}${path}?symbol=${symbol}` : API + path;
+  try {
+    const r = await fetch(url);
+    const data = await r.json();
+    return data.result || data;
+  } catch(e) {
+    console.error('API error:', e);
+    return null;
+  }
+}
+
+function getSym(id) { return document.getElementById(id).value.trim().toUpperCase() || 'NVDA'; }
+
+// ===================== CHART HELPERS =====================
+function drawCurve(canvasId, data, markers) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = (rect.width || 800) * 0.95;
+  canvas.height = 320;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const pad = { top: 30, bottom: 30, left: 50, right: 20 };
+  const pw = w - pad.left - pad.right;
+  const ph = h - pad.top - pad.bottom;
+
+  ctx.clearRect(0, 0, w, h);
+  if (!data || data.length < 2) {
+    ctx.fillStyle = '#667788';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('No data', w/2, h/2);
+    return;
+  }
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+
+  // grid
+  ctx.strokeStyle = '#1a2d3d';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.top + (ph * i / 4);
+    ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
+    const val = max - (range * i / 4);
+    ctx.fillStyle = '#667788'; ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right'; ctx.fillText(val.toFixed(0), pad.left - 5, y + 4);
+  }
+
+  // curve
+  ctx.strokeStyle = '#4fc3f7';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < data.length; i++) {
+    const x = pad.left + (i / (data.length - 1)) * pw;
+    const y = pad.top + ph - ((data[i] - min) / range) * ph;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // markers
+  if (markers) {
+    markers.forEach(m => {
+      const idx = m._idx;
+      if (idx === undefined || idx < 0 || idx >= data.length) return;
+      const x = pad.left + (idx / (data.length - 1)) * pw;
+      const y = pad.top + ph - ((data[idx] - min) / range) * ph;
+      const color = m.action === 'BUY' ? '#4caf50' : m.action === 'SELL' ? '#f44336' : '#ff9800';
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = '8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(m.action, x, y - 8);
+    });
+  }
+}
+
+function drawSignalBar(containerId, signals) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  const total = Object.values(signals).reduce((a,b) => a+b, 0) || 1;
+  const colors = { BUY: '#4caf50', SELL: '#f44336', HOLD: '#2196f3', REDUCE: '#ff9800', RISK_OFF: '#9c27b0' };
+  let html = '<div class="signal-bar">';
+  for (const [k, v] of Object.entries(signals)) {
+    const pct = (v / total * 100).toFixed(1);
+    html += `<div class="signal-seg" style="flex:${v};background:${colors[k]||'#666'}">${k} ${v} (${pct}%)</div>`;
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+// ===================== DASHBOARD =====================
+async function refreshDashboard() {
+  const sym = getSym('sym-dash');
+  const bt = await apiGet('/ui/backtest_data', sym);
+  const opt = await apiGet('/ui/optimizer_data', sym);
+  const rpt = await apiGet('/ui/report_data', sym);
+  if (!bt || !rpt) return;
+
+  state.backtest = bt;
+  state.optimizer = opt;
+  state.report = rpt;
+
+  // metrics
+  const perf = bt.performance || {};
+  const ps = rpt.performance_summary || {};
+  document.getElementById('dash-metrics').innerHTML = `
+    <div class="metric"><div class="value ${ps.total_return_pct >= 0 ? 'positive' : 'negative'}">${(ps.total_return_pct || 0).toFixed(2)}%</div><div class="label">Total Return</div></div>
+    <div class="metric"><div class="value">${(ps.sharpe_ratio || 0).toFixed(2)}</div><div class="label">Sharpe</div></div>
+    <div class="metric"><div class="value">${(ps.win_rate * 100 || 0).toFixed(1)}%</div><div class="label">Win Rate</div></div>
+    <div class="metric"><div class="value negative">${(ps.max_drawdown * 100 || 0).toFixed(2)}%</div><div class="label">Max Drawdown</div></div>
+    <div class="metric"><div class="value">${bt.performance.total_trade_count || 0}</div><div class="label">Trades</div></div>
+  `;
+
+  // equity curve
+  drawCurve('dash-equity', bt.equity_curve, null);
+
+  // signals
+  const sigs = rpt.signal_breakdown || {};
+  drawSignalBar('dash-signals', sigs);
+
+  // config
+  const bc = (opt && opt.best_config) || {};
+  document.getElementById('dash-config').textContent = JSON.stringify(bc, null, 2);
+}
+
+// ===================== STRATEGY EXPLORER =====================
+async function refreshExplorer() {
+  const sym = getSym('sym-exp');
+  const opt = await apiGet('/ui/optimizer_data', sym);
+  if (!opt) return;
+  state.optimizer = opt;
+  const strategies = opt.strategies || [];
+  state.strategies = strategies;
+
+  document.getElementById('exp-count').textContent = `(${strategies.length} total)`;
+
+  let html = '';
+  strategies.forEach(s => {
+    const c = s.config || {};
+    html += `<div class="strategy-card">
+      <h3>#${s.rank} — Score: <span class="score" style="color:#4fc3f7">${(s.score || 0).toFixed(4)}</span></h3>
+      <div class="params">
+        momentum: ${(c.momentum_threshold || 0).toFixed(2)} |
+        reversion: ${(c.mean_reversion_threshold || 0).toFixed(2)} |
+        volatility: ${(c.volatility_threshold || 0).toFixed(2)} |
+        risk_penalty: ${(c.risk_penalty || 0).toFixed(1)}
+      </div>
+    </div>`;
+  });
+  document.getElementById('exp-grid').innerHTML = html;
+}
+
+// ===================== BACKTEST VIEWER =====================
+async function refreshBacktest() {
+  const sym = getSym('sym-bt');
+  const bt = await apiGet('/ui/backtest_data', sym);
+  if (!bt) return;
+  state.backtest = bt;
+
+  const perf = bt.performance || {};
+  document.getElementById('bt-metrics').innerHTML = `
+    <div class="metric"><div class="value">${(perf.total_return_pct || 0).toFixed(2)}%</div><div class="label">Return</div></div>
+    <div class="metric"><div class="value">${(perf.avg_win_rate * 100 || 0).toFixed(1)}%</div><div class="label">Win Rate</div></div>
+    <div class="metric"><div class="value">${perf.total_trade_count || 0}</div><div class="label">Trades</div></div>
+    <div class="metric"><div class="value">${perf.symbols ? perf.symbols.join(', ') : '-'}</div><div class="label">Symbols</div></div>
+  `;
+
+  // associate trade markers with equity curve indices
+  const markers = (bt.trade_markers || []).map(m => {
+    // match by date position in equity curve
+    return { ...m, _idx: null };
+  });
+
+  // draw full curve
+  bt._markers = markers;
+  drawBacktestChart();
+
+  // trades table
+  let thtml = '';
+  (bt.trade_markers || []).forEach(t => {
+    thtml += `<div class="trade-item">
+      <span><span class="action ${t.action}">${t.action}</span> ${t.date || ''}</span>
+      <span>${t.qty || 0} @ $${(t.price || 0).toFixed(2)} ${t.pnl !== null ? '| PnL: $' + t.pnl.toFixed(2) : ''}</span>
+    </div>`;
+  });
+  document.getElementById('bt-trades').innerHTML = thtml || '<div style="color:#667788;">No trades</div>';
+}
+
+function drawBacktestChart() {
+  const bt = state.backtest;
+  if (!bt || !bt.equity_curve) return;
+  const markers = (bt.trade_markers || []).map((m, i) => ({ ...m, _idx: i }));
+  drawCurve('bt-equity', bt.equity_curve, bt._markers || []);
+  const slider = document.getElementById('bt-slider');
+  slider.max = bt.equity_curve.length - 1;
+  slider.value = slider.max;
+  document.getElementById('bt-step-label').textContent = `Step ${bt.equity_curve.length}/${bt.equity_curve.length}`;
+}
+
+function btSeek(val) {
+  const bt = state.backtest;
+  if (!bt || !bt.equity_curve) return;
+  const idx = parseInt(val);
+  state.btCurrentStep = idx;
+  const sub = bt.equity_curve.slice(0, idx + 1);
+  drawCurve('bt-equity', sub, (bt._markers || []).filter(m => m._idx !== null && m._idx <= idx));
+  document.getElementById('bt-step-label').textContent = `Step ${idx+1}/${bt.equity_curve.length}`;
+}
+
+function btPlay() {
+  if (state.btPlayTimer) return;
+  const slider = document.getElementById('bt-slider');
+  state.btPlayTimer = setInterval(() => {
+    let v = parseInt(slider.value);
+    if (v >= parseInt(slider.max)) { btReset(); return; }
+    slider.value = v + 1;
+    btSeek(slider.value);
+  }, 100);
+}
+
+function btReset() {
+  if (state.btPlayTimer) { clearInterval(state.btPlayTimer); state.btPlayTimer = null; }
+  drawBacktestChart();
+}
+
+// ===================== REPORT VIEWER =====================
+async function refreshReport() {
+  const sym = getSym('sym-rpt');
+  const rpt = await apiGet('/ui/report_data', sym);
+  if (!rpt) return;
+  state.report = rpt;
+
+  const ps = rpt.performance_summary || {};
+  document.getElementById('rpt-metrics').innerHTML = `
+    <div class="metric"><div class="value ${ps.total_return_pct >= 0 ? 'positive' : 'negative'}">${(ps.total_return_pct || 0).toFixed(2)}%</div><div class="label">Return</div></div>
+    <div class="metric"><div class="value">${(ps.sharpe_ratio || 0).toFixed(2)}</div><div class="label">Sharpe</div></div>
+    <div class="metric"><div class="value">${(ps.win_rate * 100 || 0).toFixed(1)}%</div><div class="label">Win Rate</div></div>
+    <div class="metric"><div class="value negative">${(ps.max_drawdown * 100 || 0).toFixed(2)}%</div><div class="label">Max DD</div></div>
+  `;
+
+  // risk metrics
+  const rm = rpt.risk_metrics || {};
+  document.getElementById('rpt-risk').innerHTML = `
+    <div class="strategy-card"><h3>Max Drawdown</h3><div class="score" style="color:#f44336">${(rm.max_drawdown * 100 || 0).toFixed(2)}%</div></div>
+    <div class="strategy-card"><h3>Sharpe Ratio</h3><div class="score" style="color:#4fc3f7">${(rm.sharpe_ratio || 0).toFixed(4)}</div></div>
+    <div class="strategy-card"><h3>Profit Factor</h3><div class="score">${rm.profit_factor !== null ? rm.profit_factor.toFixed(4) : 'N/A'}</div></div>
+    <div class="strategy-card"><h3>Win Rate</h3><div class="score" style="color:#4caf50">${(rm.win_rate * 100 || 0).toFixed(1)}%</div></div>
+  `;
+
+  // signals
+  drawSignalBar('rpt-signals', rpt.signal_breakdown || {});
+
+  // equity curve
+  drawCurve('rpt-equity', rpt.equity_curve, null);
+
+  // optimizer results
+  document.getElementById('rpt-opt').textContent = JSON.stringify(rpt.optimizer_results || {}, null, 2);
+}
+
+// ===================== REFRESH ALL =====================
+async function refreshAll() {
+  await refreshDashboard();
+  await refreshExplorer();
+  await refreshBacktest();
+  await refreshReport();
+}
+
+// ===================== INIT =====================
+document.addEventListener('DOMContentLoaded', () => {
+  refreshDashboard();
+});
+</script>
+</body>
+</html>

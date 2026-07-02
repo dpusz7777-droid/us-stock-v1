@@ -1,0 +1,12 @@
+{
+  "report_score": 80.55,
+  "metrics": {
+    "total_return_pct": 2.54,
+    "max_drawdown_pct": 1.18,
+    "win_rate_pct": 71.4,
+    "profit_loss_ratio": 0.0,
+    "trade_count": 7
+  },
+  "source": "reports/backtest-latest.md",
+  "report_file": "/Users/duyu/Desktop/美股V1/reports/backtest-latest.md"
+}
