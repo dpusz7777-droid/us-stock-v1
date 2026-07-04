@@ -594,6 +594,62 @@ def build_strategy_regime_insight(review_rows: list[dict]) -> dict:
     global_worst = min(strategy_rates, key=lambda k: strategy_rates[k]["total_wr"]/strategy_rates[k]["count"]) if strategy_rates else "unknown"
     return {"best_pairs":best_pairs,"worst_pairs":worst_pairs,"global_best_strategy":global_best,"global_worst_strategy":global_worst}
 
+
+# ── v33: 策略稳定性系统 ──
+
+def build_strategy_stability_summary(review_rows: list[dict]) -> dict:
+    """计算每个策略在不同市场环境中的稳定性（只读）。
+
+    规则：
+        stability_score = avg_win_rate - regime_variance_penalty
+        regime_variance_penalty = 不同 regime win_rate 的方差 * 100
+        avg_win_rate = 各 regime win_rate 平均值（百分比）
+
+    返回：
+        {
+            "strategy_stability": {
+                "momentum": {"avg_win_rate": float, "regime_variance": float, "stability_score": float},
+                ...
+            },
+            "most_stable_strategy": str,
+            "least_stable_strategy": str,
+        }
+    """
+    matrix = build_strategy_regime_matrix(review_rows)
+    result = {}
+    # 收集每个策略在各 regime 中的 win_rate
+    strategy_regime_rates: dict = {}
+    for rg, strategies in matrix.items():
+        for st, stats in strategies.items():
+            if stats["win_rate"] is not None and stats["count"] > 0:
+                if st not in strategy_regime_rates:
+                    strategy_regime_rates[st] = []
+                strategy_regime_rates[st].append(stats["win_rate"])
+
+    for st, rates in strategy_regime_rates.items():
+        if not rates:
+            continue
+        avg_wr = sum(rates) / len(rates)
+        variance = sum((r - avg_wr) ** 2 for r in rates) / len(rates)
+        penalty = variance * 100  # 方差放大
+        stability = avg_wr - penalty
+        result[st] = {
+            "avg_win_rate": round(avg_wr, 1),
+            "regime_variance": round(variance, 3),
+            "stability_score": round(stability, 1),
+        }
+
+    most_stable = max(result, key=lambda k: result[k]["stability_score"]) if result else "unknown"
+    least_stable = min(result, key=lambda k: result[k]["stability_score"]) if result else "unknown"
+    return {"strategy_stability": result, "most_stable_strategy": most_stable, "least_stable_strategy": least_stable}
+
+def build_strategy_stability_insight(review_rows: list[dict]) -> dict:
+    """策略稳定性洞察（只读）。"""
+    summary = build_strategy_stability_summary(review_rows)
+    ranking = sorted(summary["strategy_stability"].items(), key=lambda x: -x[1]["stability_score"])
+    ranking_list = [{"strategy": k, "score": v["stability_score"]} for k, v in ranking]
+    return {"ranking": ranking_list, "most_robust": summary["most_stable_strategy"], "least_robust": summary["least_stable_strategy"]}
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
