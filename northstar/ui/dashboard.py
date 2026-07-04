@@ -720,6 +720,8 @@ def run() -> None:
                         "中性": row["neutral_count"],
                         "未知": row["unknown_count"],
                         "胜率": _act_rate(row["win_rate"]),
+                        "可判断样本": row.get("evaluable_count", 0),
+                        "样本可信度": row.get("confidence_label", "暂无可判断样本"),
                         "平均原始涨跌幅": _act_pct(row["avg_raw_change_pct"]),
                         "平均归一化涨跌幅": _act_pct(row["avg_normalized_change_pct"]),
                     })
@@ -788,6 +790,8 @@ def run() -> None:
                         "中性": row["neutral_count"],
                         "未知": row["unknown_count"],
                         "胜率": _hor_rate(row["win_rate"]),
+                        "可判断样本": row.get("evaluable_count", 0),
+                        "样本可信度": row.get("confidence_label", "暂无可判断样本"),
                         "平均原始涨跌幅": _hor_pct(row["avg_raw_change_pct"]),
                         "平均方向涨跌幅": _hor_pct(row["avg_normalized_change_pct"]),
                         "最佳方向涨跌幅": _hor_pct(row["best_normalized_change_pct"]),
