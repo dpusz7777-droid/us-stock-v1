@@ -1465,6 +1465,227 @@ def build_research_agent_report(review_rows: list[dict]) -> dict:
     }
 
 
+# ── v40: Autonomous Research Loop v2 ──
+
+def _generate_research_topics(review_rows: list[dict]) -> list[dict]:
+    """自动生成 research topics（基于 failure risk / stability / transition / matrix）。"""
+    topics = []
+    if not review_rows or len(review_rows) < 4:
+        return topics
+
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    matrix = build_strategy_regime_matrix(review_rows)
+    regime = classify_market_regime(review_rows)
+
+    # 1. high failure risk → why failure occurs
+    hr = failure_risk.get("high_risk_strategies", [])
+    for s in hr:
+        risk_score = failure_risk.get("strategy_failure_risk", {}).get(s, {}).get("risk_score", 0)
+        topics.append({
+            "topic": f"{s} failure under {regime}",
+            "source": "failure_risk",
+            "reason": f"high risk score {risk_score}",
+        })
+
+    # 2. low stability → what causes instability
+    strategy_stability = stability.get("strategy_stability", {})
+    if strategy_stability:
+        sorted_stable = sorted(strategy_stability.items(), key=lambda x: x[1]["stability_score"])
+        if sorted_stable:
+            least = sorted_stable[0]
+            if least[1]["stability_score"] < 50:
+                topics.append({
+                    "topic": f"{least[0]} instability under regime change",
+                    "source": "stability",
+                    "reason": f"lowest stability score {least[1]['stability_score']}",
+                })
+
+    # 3. regime transition → how transition affects strategy
+    if transition.get("is_transitioning"):
+        topics.append({
+            "topic": f"strategy adaptation during {regime} transition",
+            "source": "transition",
+            "reason": f"active transition strength {transition['transition_strength']}",
+        })
+
+    # 4. matrix weak performance zones
+    weak_zones = []
+    for rg, strategies in matrix.items():
+        for st, stats in strategies.items():
+            if stats.get("win_rate") is not None and stats["win_rate"] < 40 and stats["count"] >= 2:
+                weak_zones.append(f"{st} in {rg}")
+    if weak_zones:
+        topics.append({
+            "topic": f"weak performance zones: {', '.join(weak_zones[:3])}",
+            "source": "matrix",
+            "reason": f"{len(weak_zones)} underperforming strategy-regime pairs",
+        })
+
+    # Fallback
+    if not topics:
+        topics.append({
+            "topic": "current regime strategy performance analysis",
+            "source": "general",
+            "reason": "insufficient data for targeted topics",
+        })
+
+    return topics[:4]
+
+
+def _build_analysis_path(topic: str, review_rows: list[dict]) -> list[str]:
+    """为 topic 构建分析路径（3-4 steps）。"""
+    steps = ["check regime distribution"]
+    q_lower = topic.lower()
+
+    if "fail" in q_lower or "risk" in q_lower:
+        steps.append("check failure risk")
+        steps.append("check historical performance")
+    elif "instability" in q_lower or "stability" in q_lower:
+        steps.append("check stability score")
+        steps.append("check regime variance")
+    elif "transition" in q_lower:
+        steps.append("check regime transition")
+        steps.append("check strategy × regime matrix")
+    elif "weak" in q_lower:
+        steps.append("check strategy × regime matrix")
+        steps.append("check failure risk trends")
+    else:
+        steps.append("check strategy × regime matrix")
+    steps.append("check stability score")
+    steps.append("check failure risk trends")
+    return steps
+
+
+def _generate_cycle_insight(topic: dict, review_rows: list[dict]) -> str:
+    """为单个 topic 生成 insight。"""
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    regime = classify_market_regime(review_rows)
+
+    insight = None
+    t = topic["topic"].lower()
+    src = topic.get("source", "")
+
+    if "fail" in t or src == "failure_risk":
+        hr = failure_risk.get("high_risk_strategies", [])
+        if hr:
+            insight = f"{', '.join(hr)} is sensitive to {regime} regime"
+    if "instability" in t or src == "stability":
+        strategy_stability = stability.get("strategy_stability", {})
+        if strategy_stability:
+            least = min(strategy_stability, key=lambda k: strategy_stability[k]["stability_score"])
+            insight = f"{least} shows regime-dependent instability (score={strategy_stability[least]['stability_score']})"
+    if "transition" in t or src == "transition":
+        insight = f"Strategy performance is regime-dominated during {regime} transition"
+    if "weak" in t or src == "matrix":
+        insight = f"Multiple strategies underperform in current {regime} regime"
+
+    if not insight:
+        insight = f"Strategy behavior is driven by {regime} regime conditions"
+    return insight
+
+
+def _generate_next_questions(cycle: list[dict]) -> list[str]:
+    """基于当前 cycle 生成下一轮研究问题。"""
+    questions = []
+    topics_seen = set()
+    for c in cycle:
+        t = c.get("topic", "").lower()
+        if "fail" in t and "momentum" not in t:
+            questions.append("Why does momentum outperform in bull regimes?")
+        if "instability" in t:
+            questions.append("How does regime transition impact breakout strategies?")
+        if "transition" in t:
+            questions.append("Why does defensive outperform in unstable regimes?")
+        if "weak" in t:
+            questions.append("How can portfolio diversification reduce regime sensitivity?")
+    if not questions:
+        questions.append("Which strategies are best suited for current market regime?")
+        questions.append("How does volatility affect strategy performance?")
+    return list(set(questions))[:3]
+
+
+def run_autonomous_research_loop_v2(review_rows: list[dict]) -> dict:
+    """自主研究循环 v2（只读、规则驱动）。
+
+    自动决定研究主题 → 选择分析路径 → 生成 insight → 形成下一轮问题。
+    """
+    result = {"research_cycle": [], "next_research_questions": [], "system_conclusions": [], "confidence": 0.0}
+    if not review_rows or len(review_rows) < 4:
+        return result
+
+    topics = _generate_research_topics(review_rows)
+    regime = classify_market_regime(review_rows)
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+
+    cycle = []
+    for i, t in enumerate(topics):
+        path = _build_analysis_path(t["topic"], review_rows)
+        insight = _generate_cycle_insight(t, review_rows)
+        cycle.append({
+            "cycle_id": i + 1,
+            "topic": t["topic"],
+            "analysis_path": path,
+            "insight": insight,
+        })
+    result["research_cycle"] = cycle
+
+    # Next research questions
+    next_qs = _generate_next_questions(cycle)
+    result["next_research_questions"] = next_qs
+
+    # System conclusions
+    conclusions = []
+    hr = failure_risk.get("high_risk_strategies", [])
+    if hr:
+        conclusions.append(f"{', '.join(hr)} is regime-sensitive in {regime}")
+    strategy_stability = stability.get("strategy_stability", {})
+    if strategy_stability:
+        most = max(strategy_stability, key=lambda k: strategy_stability[k]["stability_score"])
+        conclusions.append(f"{most} is most robust across regimes")
+    if transition.get("is_transitioning"):
+        conclusions.append("Volatility amplifies failure risk during transitions")
+    if not conclusions:
+        conclusions.append("Insufficient data for system-level conclusions")
+    result["system_conclusions"] = conclusions
+
+    # Confidence
+    n_topics = len(topics)
+    n_conclusions = len(conclusions)
+    data_conf = min(len(review_rows) / 12, 1.0) * 0.3
+    topic_conf = min(n_topics / 3, 1.0) * 0.4
+    conclusion_conf = min(n_conclusions / 3, 1.0) * 0.3
+    result["confidence"] = round(data_conf + topic_conf + conclusion_conf, 2)
+
+    return result
+
+
+def build_autonomous_research_report_v2(review_rows: list[dict]) -> dict:
+    """自主研究报告 v3（只读）。"""
+    loop = run_autonomous_research_loop_v2(review_rows)
+    core_insights = []
+    research_evolution = []
+    for c in loop.get("research_cycle", []):
+        if c.get("insight") and c["insight"] not in core_insights:
+            core_insights.append(c["insight"])
+    if core_insights:
+        research_evolution.append("From strategy → regime → system-level understanding")
+    else:
+        core_insights.append("Insufficient data for core insights")
+        research_evolution.append("Initial research cycle initiated")
+    return {
+        "core_insights": core_insights[:5],
+        "research_evolution": research_evolution,
+        "recommended_next_cycle": loop.get("next_research_questions", []),
+        "confidence": loop["confidence"],
+    }
+
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:

@@ -601,6 +601,42 @@ def render_recommendation_review_section(
     except Exception:
         pass
 
+    # ── v40: Autonomous Research Loop v2 ──
+    try:
+        from northstar.data.recommendation_review import run_autonomous_research_loop_v2, build_autonomous_research_report_v2
+        arv2_recs = get_all_recommendations_fn()
+        if arv2_recs:
+            loop = run_autonomous_research_loop_v2(arv2_recs)
+            report = build_autonomous_research_report_v2(arv2_recs)
+            with st.expander("🔁 Autonomous Research Loop v2", expanded=False):
+                st.caption("**自主研究循环 v2**：自动决定研究主题 → 选择分析路径 → 生成 insight → 形成下一轮问题。")
+                rc = loop.get("research_cycle", [])
+                if rc:
+                    st.markdown("**Research Cycle**")
+                    for c in rc:
+                        with st.expander(f"Cycle {c['cycle_id']}: {c.get('topic', '')[:60]}...", expanded=False):
+                            st.markdown(f"**Insight**: {c.get('insight', '')}")
+                            st.markdown("**Analysis Path**")
+                            for step in c.get("analysis_path", []):
+                                st.markdown(f"- {step}")
+                nq = loop.get("next_research_questions", [])
+                if nq:
+                    st.markdown("**Next Research Questions**")
+                    for q in nq:
+                        st.markdown(f"- {q}")
+                sc = loop.get("system_conclusions", [])
+                if sc:
+                    st.markdown("**System Conclusions**")
+                    for c_val in sc:
+                        st.markdown(f"- {c_val}")
+                conf = loop.get("confidence", 0)
+                st.metric("Cycle Confidence", f"{conf:.0%}")
+                st.caption("自主研究循环仅基于历史数据，不构成投资建议。")
+        else:
+            pass
+    except Exception:
+        pass
+
     # ── v36: Portfolio Intelligence Layer ──
     try:
         from northstar.data.recommendation_review import build_portfolio_intelligence_summary, build_portfolio_rebalance_insight
