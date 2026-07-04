@@ -178,6 +178,22 @@ def review_recommendations(recommendations: list[dict[str, Any]]) -> list[dict[s
     return results
 
 
+def _is_buy_action(action: str) -> bool:
+    """判断建议动作是否属于买入类（可识别中英文）。"""
+    action_lower = action.lower()
+    buy_lower_set = {"买入", "加仓", "补仓", "看多", "做多", "buy", "add", "accumulate", "bullish", "watch_buy", "strong_buy"}
+    buy_exact_set = {"买入", "加仓", "补仓", "看多", "做多"}
+    return action_lower in buy_lower_set or action in buy_exact_set
+
+
+def _is_sell_action(action: str) -> bool:
+    """判断建议动作是否属于卖出/回避类（可识别中英文）。"""
+    action_lower = action.lower()
+    sell_lower_set = {"卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空", "sell", "reduce", "exit", "bearish", "avoid"}
+    sell_exact_set = {"卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空"}
+    return action_lower in sell_lower_set or action in sell_exact_set
+
+
 def classify_recommendation_review_result(row: dict) -> dict:
     """对一条建议复盘结果进行只读分级。
 
@@ -236,15 +252,10 @@ def classify_recommendation_review_result(row: dict) -> dict:
                 "review_grade_score": 0,
             }
 
-        # ── 识别动作类型 ──
-        action_lower = action.lower()
-        action_display = action  # 保留原始中文/英文
-
-        # 买入类（预期上涨才正确）
-        is_buy = action_lower in ("买入", "加仓", "补仓", "看多", "做多", "buy", "add", "accumulate", "bullish", "watch_buy", "strong_buy") or action in ("买入", "加仓", "补仓", "看多", "做多")
-
-        # 卖出类（预期下跌才正确）
-        is_sell = action_lower in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空", "sell", "reduce", "exit", "bearish", "avoid") or action in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空")
+        # ── 识别动作类型（使用统一辅助函数） ──
+        action_display = action
+        is_buy = _is_buy_action(action)
+        is_sell = _is_sell_action(action)
 
         # 持有/观察类（中性，不判断有效/失效）
         is_neutral = (not is_buy and not is_sell)
@@ -1665,10 +1676,9 @@ def classify_recommendation_failure_reason(row: dict) -> dict:
                 "failure_flags": ["涨跌幅格式异常"],
             }
 
-        # 识别动作类型
-        action_lower = action.lower()
-        is_buy = action_lower in ("买入", "加仓", "补仓", "看多", "做多", "buy", "add", "accumulate", "bullish", "watch_buy", "strong_buy") or action in ("买入", "加仓", "补仓", "看多", "做多")
-        is_sell = action_lower in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空", "sell", "reduce", "exit", "bearish", "avoid") or action in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空")
+        # 识别动作类型（使用统一辅助函数）
+        is_buy = _is_buy_action(action)
+        is_sell = _is_sell_action(action)
 
         # 买入类建议失效：上涨没赚到是因为没买，但这里只关心"买入后下跌"
         if is_buy:
