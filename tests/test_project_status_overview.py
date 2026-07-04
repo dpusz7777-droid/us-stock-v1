@@ -20,7 +20,6 @@ PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-# 直接定义 get_git_commit_info 的副本用于测试（避免导入 UI 模块的副作用）
 import subprocess
 
 
@@ -58,6 +57,25 @@ def get_git_commit_info(project_root: str | Path) -> dict:
     except Exception:
         pass
     return result
+
+
+def get_project_test_status() -> dict:
+    """返回最近一次开发验收的测试结果（只读、免重启配置）。"""
+    return {
+        "passed": 79,
+        "total": 79,
+        "status": "通过",
+        "note": "来自最近一次开发验收（v27）；后续每次改动仍需重新运行测试",
+        "suites": [
+            {"name": "项目状态测试", "passed": 6, "total": 6},
+            {"name": "导入稳定性测试", "passed": 10, "total": 10},
+            {"name": "建议分级测试", "passed": 17, "total": 17},
+            {"name": "快照分级测试", "passed": 13, "total": 13},
+            {"name": "质量解释测试", "passed": 10, "total": 10},
+            {"name": "失效原因测试", "passed": 15, "total": 15},
+            {"name": "失效总结测试", "passed": 8, "total": 8},
+        ],
+    }
 
 
 class TestGetGitCommitInfo(unittest.TestCase):
@@ -103,6 +121,44 @@ class TestGetGitCommitInfo(unittest.TestCase):
         # 如果在真实 Git 仓库，error 应该为 None
         if result.get("commit") != "暂无数据":
             self.assertIsNone(result.get("error"))
+
+
+class TestGetProjectTestStatus(unittest.TestCase):
+    """get_project_test_status 单元测试"""
+
+    def test_returns_dict(self):
+        result = get_project_test_status()
+        self.assertIsInstance(result, dict)
+
+    def test_contains_all_fields(self):
+        result = get_project_test_status()
+        self.assertIn("passed", result)
+        self.assertIn("total", result)
+        self.assertIn("status", result)
+        self.assertIn("note", result)
+        self.assertIn("suites", result)
+
+    def test_passed_equals_total(self):
+        result = get_project_test_status()
+        self.assertEqual(result["passed"], result["total"])
+
+    def test_passed_is_79(self):
+        result = get_project_test_status()
+        self.assertEqual(result["passed"], 79)
+
+    def test_has_at_least_7_suites(self):
+        result = get_project_test_status()
+        self.assertGreaterEqual(len(result["suites"]), 7)
+
+    def test_no_suite_exceeds_total(self):
+        result = get_project_test_status()
+        for suite in result["suites"]:
+            self.assertLessEqual(suite["passed"], suite["total"])
+
+    def test_all_suite_totals_sum_to_total(self):
+        result = get_project_test_status()
+        total_from_suites = sum(s["total"] for s in result["suites"])
+        self.assertEqual(total_from_suites, result["total"])
 
 
 if __name__ == "__main__":

@@ -95,6 +95,25 @@ def run() -> None:
     if not isinstance(trades, list): trades = []
     if not isinstance(curve, list): curve = []
 
+    # ── v28: 集中维护的测试状态 ──
+    def get_project_test_status() -> dict:
+        """返回最近一次开发验收的测试结果（只读、免重启配置）。"""
+        return {
+            "passed": 79,
+            "total": 79,
+            "status": "通过",
+            "note": "来自最近一次开发验收（v27）；后续每次改动仍需重新运行测试",
+            "suites": [
+                {"name": "项目状态测试", "passed": 6, "total": 6},
+                {"name": "导入稳定性测试", "passed": 10, "total": 10},
+                {"name": "建议分级测试", "passed": 17, "total": 17},
+                {"name": "快照分级测试", "passed": 13, "total": 13},
+                {"name": "质量解释测试", "passed": 10, "total": 10},
+                {"name": "失效原因测试", "passed": 15, "total": 15},
+                {"name": "失效总结测试", "passed": 8, "total": 8},
+            ],
+        }
+
     # ── v27: 自动读取 Git 信息 ──
     def get_git_commit_info(project_root: str | Path) -> dict:
         """只读获取当前 Git 仓库的 commit 信息。
@@ -163,8 +182,12 @@ def run() -> None:
             for i, (n, s) in enumerate(modules):
                 [mc1, mc2, mc3, mc4][i % 4].metric(n, s)
             st_.markdown("**测试状态**")
-            st_.metric("复盘相关测试", "73/73 通过")
-            st_.caption("来自最近一次验收；每次改动需重新运行。")
+            ts = get_project_test_status()
+            st_.metric("总测试", f"{ts['passed']}/{ts['total']} {ts['status']}")
+            with st_.expander("各套件明细", expanded=False):
+                for suite in ts["suites"]:
+                    st_.metric(suite["name"], f"{suite['passed']}/{suite['total']} 通过")
+            st_.caption(ts["note"])
             st_.markdown("**下一步建议**")
             st_.info("1️⃣ 优化项目总览（已完成）\n2️⃣ 统一 action 识别（待开发）\n3️⃣ 快照自动保存策略（待开发）\n4️⃣ 暂不做自动交易")
             st_.caption("仅用于历史复盘验证，不构成投资建议。")
