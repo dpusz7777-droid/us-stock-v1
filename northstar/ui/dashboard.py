@@ -311,7 +311,7 @@ def run() -> None:
     )
 
     try:
-        from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct, classify_recommendation_review_result, classify_recommendation_failure_reason
+        from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct, classify_recommendation_review_result, classify_recommendation_failure_reason, build_failure_reason_summary
         from northstar.data.recommendation_store import update_recommendation_review, get_all_recommendations
 
         try:
@@ -503,6 +503,27 @@ def run() -> None:
                         sc1.metric("🔴 高严重程度", severity_counts.get("高", 0))
                         sc2.metric("🟡 中严重程度", severity_counts.get("中", 0))
                         sc3.metric("🟢 低严重程度", severity_counts.get("低", 0))
+                        st.caption("仅用于历史复盘验证，不构成投资建议。")
+                except Exception:
+                    pass
+
+                # ── v20/20.1: 复盘结论总览 ──
+                try:
+                    conclusion = build_failure_reason_summary(filtered)
+                    if conclusion.get("total_failed_count", 0) > 0:
+                        st.markdown('<div class="mt" style="margin-top:16px;">📌 复盘结论总览</div>', unsafe_allow_html=True)
+                        cc1, cc2, cc3, cc4 = st.columns(4)
+                        cc1.metric("💥 失效建议", conclusion.get("total_failed_count", 0))
+                        cc2.metric("🔍 主要失效原因", conclusion.get("top_failure_reason", "—"))
+                        cc3.metric("📊 主要原因占比", f'{conclusion.get("top_failure_ratio", 0):.0%}' if conclusion.get("top_failure_ratio") else "—")
+                        sev = conclusion.get("severity_counts", {})
+                        cc4.metric("🔴 高严重程度", sev.get("高", 0))
+                        conc = conclusion.get("conclusion", "")
+                        na = conclusion.get("next_action", "")
+                        if conc:
+                            st.info(conc)
+                        if na:
+                            st.caption(f"💡 下一步：{na}")
                         st.caption("仅用于历史复盘验证，不构成投资建议。")
                 except Exception:
                     pass
@@ -1071,6 +1092,28 @@ def run() -> None:
         pass
     except Exception:
         pass
+
+    # ── v20.1: 失效原因趋势提示 ──
+    st.subheader("📉 失效原因趋势")
+    try:
+        from northstar.data.recommendation_review_snapshot import load_recommendation_review_snapshots
+        all_snaps = load_recommendation_review_snapshots()
+        snaps_with_failure = [s for s in all_snaps if s.get("failure_stats") and s["failure_stats"].get("total_failed_count", 0) > 0]
+        if len(snaps_with_failure) >= 2:
+            latest = snaps_with_failure[-1]
+            fs = latest.get("failure_stats", {})
+            st.info(f"最近包含失效原因统计的快照：{fs.get('top_failure_reason', '—')}（占比 {fs.get('top_failure_ratio', 0)*100:.0f}%），共 {fs.get('total_failed_count', 0)} 条失效建议。"
+                    "仅用于历史复盘验证，不构成投资建议。")
+        else:
+            st.markdown(
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">至少需要 2 条包含失效原因统计的快照后才能观察失效原因趋势 —— 保存快照时系统会自动记录失效原因统计。</div>',
+                unsafe_allow_html=True,
+            )
+    except Exception:
+        st.markdown(
+            '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">至少需要 2 条包含失效原因统计的快照后才能观察失效原因趋势。</div>',
+            unsafe_allow_html=True,
+        )
 
     # ── 建议复盘统计 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 建议复盘统计</div>', unsafe_allow_html=True)
