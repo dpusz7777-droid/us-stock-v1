@@ -650,6 +650,129 @@ def build_strategy_stability_insight(review_rows: list[dict]) -> dict:
     ranking_list = [{"strategy": k, "score": v["stability_score"]} for k, v in ranking]
     return {"ranking": ranking_list, "most_robust": summary["most_stable_strategy"], "least_robust": summary["least_stable_strategy"]}
 
+
+# ── v34: Market Regime Transition Detection ──
+
+def _split_windows(review_rows: list[dict], window_size: int = 5) -> tuple[list[dict], list[dict]]:
+    """将数据分为前一半和后一半两个窗口用于比较。"""
+    if not review_rows or len(review_rows) < window_size * 2:
+        return review_rows, []
+    mid = len(review_rows) // 2
+    return review_rows[:mid], review_rows[mid:]
+
+def detect_market_regime_transitions(review_rows: list[dict]) -> dict:
+    """检测市场状态是否正在变化（只读、基于规则）。
+
+    返回：
+        {
+            "transitions": list,
+            "current_regime": str,
+            "is_transitioning": bool,
+            "transition_strength": float
+        }
+    """
+    from collections import defaultdict
+    result = {"transitions": [], "current_regime": "unknown", "is_transitioning": False, "transition_strength": 0.0}
+    if not review_rows or len(review_rows) < 6:
+        result["current_regime"] = classify_market_regime(review_rows) if review_rows else "unknown"
+        return result
+
+    window_a, window_b = _split_windows(review_rows)
+    if not window_b:
+        result["current_regime"] = classify_market_regime(window_a)
+        return result
+
+    regime_a = classify_market_regime(window_a)
+    regime_b = classify_market_regime(window_b)
+    result["current_regime"] = regime_b
+
+    # 计算窗口 A 和 B 的关键指标
+    def _window_metrics(rows):
+        cps = []; wc = 0; tg = 0; mw = 0; mt = 0
+        for r in rows:
+            cp = r.get("change_pct"); g = r.get("review_grade","")
+            try: v = float(cp) if cp is not None else None
+            except: v = None
+            if v is not None: cps.append(v)
+            if g in ("有效","失效"): tg += 1
+            if g == "有效": wc += 1
+            st = classify_strategy_type(r)
+            if st == "momentum": mt += 1
+            if st == "momentum" and g == "有效": mw += 1
+        avg = sum(cps)/len(cps) if cps else 0.0
+        wr = wc/tg if tg > 0 else 0.5
+        mwr = mw/mt if mt > 0 else None
+        var = sum((x-avg)**2 for x in cps)/len(cps) if cps else 0.0
+        vol = var**0.5
+        return {"win_rate": wr, "volatility": vol, "momentum_win_rate": mwr, "avg_return": avg}
+
+    m_a = _window_metrics(window_a)
+    m_b = _window_metrics(window_b)
+
+    evidence = []
+    transition_indicators = 0
+    total_checks = 0
+
+    # 规则1: win_rate 大幅变化
+    total_checks += 1
+    wr_diff = m_b["win_rate"] - m_a["win_rate"]
+    if abs(wr_diff) > 0.15:
+        transition_indicators += 1
+        direction = "上升" if wr_diff > 0 else "下降"
+        evidence.append(f"win_rate {direction} ({abs(wr_diff)*100:.0f}%)")
+
+    # 规则2: 波动率变化
+    total_checks += 1
+    vol_ratio = m_b["volatility"] / m_a["volatility"] if m_a["volatility"] > 0 else 1.0
+    if vol_ratio > 1.5 or vol_ratio < 0.5:
+        transition_indicators += 1
+        direction = "升高" if vol_ratio > 1.5 else "降低"
+        evidence.append(f"波动率{direction}")
+
+    # 规则3: momentum 突然变化
+    if m_a["momentum_win_rate"] is not None and m_b["momentum_win_rate"] is not None:
+        total_checks += 1
+        m_diff = m_b["momentum_win_rate"] - m_a["momentum_win_rate"]
+        if abs(m_diff) > 0.2:
+            transition_indicators += 1
+            direction = "提升" if m_diff > 0 else "下降"
+            evidence.append(f"momentum {direction}")
+
+    # 规则4: regime 直接变化
+    total_checks += 1
+    if regime_a != regime_b:
+        transition_indicators += 1
+        result["transitions"].append({"from": regime_a, "to": regime_b, "confidence": 0.7, "start_index": 0, "end_index": len(review_rows)-1})
+        evidence.append(f"regime 从 {regime_a} 变为 {regime_b}")
+
+    strength = transition_indicators / total_checks if total_checks > 0 else 0.0
+    result["is_transitioning"] = strength >= 0.5
+    result["transition_strength"] = round(strength, 2)
+    return result
+
+def build_market_transition_summary(review_rows: list[dict]) -> dict:
+    """市场变化摘要（只读）。"""
+    detection = detect_market_regime_transitions(review_rows)
+    transitions = detection.get("transitions", [])
+    from_regime = transitions[0]["from"] if transitions else detection["current_regime"]
+    to_regime = transitions[0]["to"] if transitions else detection["current_regime"]
+    confidence = transitions[0]["confidence"] if transitions else 0.5
+    strength = detection["transition_strength"]
+    if strength >= 0.75:
+        wl = "high"
+    elif strength >= 0.5:
+        wl = "medium"
+    elif strength > 0:
+        wl = "low"
+    else:
+        wl = "none"
+    status = "transitioning" if detection["is_transitioning"] else "stable"
+    evidence = []
+    if status == "transitioning":
+        if "regime" in str(transitions): evidence.append("regime类型变化")
+        evidence.append(f"transition strength: {strength}")
+    return {"status": status, "from_regime": from_regime, "to_regime": to_regime, "confidence": round(confidence, 2), "warning_level": wl, "evidence": evidence}
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
