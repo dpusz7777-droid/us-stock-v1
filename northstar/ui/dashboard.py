@@ -584,6 +584,72 @@ def run() -> None:
             unsafe_allow_html=True,
         )
 
+    # ── 按股票统计 ───────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">📊 按股票统计</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review import get_recommendation_symbol_stats, format_change_pct
+        from northstar.data.recommendation_store import get_all_recommendations as _sym_recs
+
+        try:
+            sym_recs = _sym_recs()
+        except Exception:
+            sym_recs = []
+
+        if not sym_recs:
+            st.markdown(
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无股票复盘统计</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            symbol_rows = get_recommendation_symbol_stats(sym_recs)
+
+            if not symbol_rows:
+                st.markdown(
+                    '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无股票复盘统计</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                def _sym_pct(v: float | None) -> str:
+                    if v is None:
+                        return "暂无数据"
+                    return format_change_pct(v)
+
+                def _sym_rate(v: float | None) -> str:
+                    if v is None:
+                        return "暂无数据"
+                    return f"{v:.2f}%"
+
+                table_rows = []
+                for row in symbol_rows:
+                    table_rows.append({
+                        "股票代码": row["symbol"],
+                        "建议总数": row["total_count"],
+                        "已复盘": row["reviewed_count"],
+                        "待复盘": row["pending_count"],
+                        "胜率": _sym_rate(row["win_rate"]),
+                        "平均涨跌幅": _sym_pct(row["avg_change_pct"]),
+                        "最佳涨跌幅": _sym_pct(row["best_change_pct"]),
+                        "最差涨跌幅": _sym_pct(row["worst_change_pct"]),
+                        "最近建议日期": row.get("latest_date") or "—",
+                        "最近复盘状态": row.get("latest_status") or "—",
+                    })
+
+                import pandas as pd
+                df = pd.DataFrame(table_rows)
+                st.dataframe(df, use_container_width=True, hide_index=True)
+
+    except ImportError as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#DC2626;font-size:11px;">按股票统计模块未加载: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#B45309;font-size:11px;">按股票统计异常: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown('<div class="ftr">北极星 · 仅用于研究参考 · 不构成投资建议</div>', unsafe_allow_html=True)
 
 

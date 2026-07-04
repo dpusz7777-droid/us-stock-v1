@@ -330,6 +330,134 @@ def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
     }
 
 
+def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
+    """按股票代码统计建议表现。
+
+    参数：
+        recommendations: 完整建议记录列表（来自 get_all_recommendations）
+
+    返回：
+        list[dict]，每个元素包含：
+            symbol: str                   股票代码
+            total_count: int              建议总数
+            reviewed_count: int           已复盘数
+            pending_count: int            未复盘数
+            win_count: int                上涨数
+            loss_count: int               下跌数
+            win_rate: float | None        胜率（上涨/已复盘）
+            avg_change_pct: float | None  平均涨跌幅
+            best_change_pct: float | None 最佳单条涨跌幅
+            worst_change_pct: float | None 最差单条涨跌幅
+            latest_date: str | None       最近建议日期
+            latest_status: str | None     最近复盘状态
+
+    安全保证：
+        - 字段缺失、旧数据、review_result=None 不会崩溃
+        - 没有任何写回操作
+        - 缺 symbol 的记录归类为 UNKNOWN
+    """
+    from collections import defaultdict
+
+    groups: dict[str, dict] = defaultdict(lambda: {
+        "total_count": 0,
+        "reviewed_count": 0,
+        "pending_count": 0,
+        "win_count": 0,
+        "loss_count": 0,
+        "change_pcts": [],
+        "dates": [],
+        "latest_status_raw": None,
+    })
+
+    for rec in recommendations:
+        symbol = rec.get("symbol", "").strip().upper()
+        if not symbol:
+            symbol = "UNKNOWN"
+        status = rec.get("status", "open")
+        review_result = rec.get("review_result")
+        created_at = rec.get("created_at", "")
+        g = groups[symbol]
+        g["total_count"] += 1
+
+        if created_at:
+            g["dates"].append(created_at)
+
+        if status == "reviewed":
+            g["reviewed_count"] += 1
+
+            if isinstance(review_result, dict):
+                rv_status = review_result.get("review_status", "")
+                change_pct = review_result.get("change_pct")
+
+                if rv_status == "上涨":
+                    g["win_count"] += 1
+                elif rv_status == "下跌":
+                    g["loss_count"] += 1
+
+                if change_pct is not None:
+                    try:
+                        val = float(change_pct)
+                        g["change_pcts"].append(val)
+                    except (TypeError, ValueError):
+                        pass
+
+                g["latest_status_raw"] = rv_status
+            elif isinstance(review_result, str):
+                g["latest_status_raw"] = review_result
+            else:
+                g["latest_status_raw"] = "无法计算"
+        else:
+            g["pending_count"] += 1
+
+    result_rows = []
+    for symbol, g in sorted(groups.items()):
+        reviewed = g["reviewed_count"]
+
+        # Win rate
+        win_rate: float | None = None
+        if reviewed > 0:
+            win_rate = round(g["win_count"] / reviewed * 100, 2)
+
+        # Average change_pct
+        avg_change_pct: float | None = None
+        best_change_pct: float | None = None
+        worst_change_pct: float | None = None
+        if g["change_pcts"]:
+            vals = g["change_pcts"]
+            avg_change_pct = round(sum(vals) / len(vals), 2)
+            best_change_pct = round(max(vals), 2)
+            worst_change_pct = round(min(vals), 2)
+
+        # Latest date
+        latest_date: str | None = None
+        if g["dates"]:
+            latest_date = max(g["dates"])[:10]
+
+        result_rows.append({
+            "symbol": symbol,
+            "total_count": g["total_count"],
+            "reviewed_count": reviewed,
+            "pending_count": g["pending_count"],
+            "win_count": g["win_count"],
+            "loss_count": g["loss_count"],
+            "win_rate": win_rate,
+            "avg_change_pct": avg_change_pct,
+            "best_change_pct": best_change_pct,
+            "worst_change_pct": worst_change_pct,
+            "latest_date": latest_date,
+            "latest_status": g["latest_status_raw"],
+        })
+
+    # Default sort: total_count desc, then latest_date desc
+    result_rows.sort(key=lambda x: (-x["total_count"], x.get("latest_date") or ""), reverse=False)
+    # Re-sort properly
+    result_rows.sort(key=lambda x: (-x["total_count"], -(ord(x.get("latest_date") or "z") if x.get("latest_date") else 0)))
+    # Simpler: just sort by total_count desc, then symbol
+    result_rows.sort(key=lambda x: (-x["total_count"], x["symbol"]))
+
+    return result_rows
+
+
 def calculate_review_stats(recommendations: list[dict]) -> dict:
     """计算建议复盘统计指标。
 
