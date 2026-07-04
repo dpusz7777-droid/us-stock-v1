@@ -86,6 +86,14 @@ def run() -> None:
 
     st.markdown('<h1>▦ 北极星</h1>', unsafe_allow_html=True)
 
+    # ── 顶部说明 ──
+    st.info(
+        "**北极星** — AI 投资研究与建议复盘系统\n\n"
+        "• 当前阶段仅做**研究、记录与复盘验证**，不执行自动交易\n"
+        "• 所有建议、信号、模拟交易**仅用于复盘研究**，不构成投资建议\n"
+        "• 真实买卖操作请自行判断决策"
+    )
+
     # ── 读取后端数据 ──
     ss = _lj(STATE) or {}
     trades = _lj(TRADES) or []
@@ -120,20 +128,24 @@ def run() -> None:
 
     # ── 模块1: 系统状态 ──
     with c1:
-        st.markdown('<div class="mt">📊 System Status</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mt">📊 系统状态</div>', unsafe_allow_html=True)
         health = ss.get("system_health", "OK")
         hc = "ok" if health == "OK" else "er"
+        backend_running = ss.get("system_health") is not None
+        backend_status = "运行中" if backend_running else "等待后台启动"
+        backend_color = "ok" if backend_running else "am"
         st.markdown(f"""
         <div class="cd">
-            <div class="rw"><span class="lb">系统状态</span><span class="vl {hc}">{health}</span></div>
-            <div class="rw"><span class="lb">最后运行</span><span class="vl">{ss.get("last_run_time","—")}</span></div>
+            <div class="rw"><span class="lb">Backend</span><span class="vl {backend_color}">{backend_status}</span></div>
+            <div class="rw"><span class="lb">运行状态</span><span class="vl {hc}">{health}</span></div>
+            <div class="rw"><span class="lb">最后运行</span><span class="vl">{ss.get("last_run_time","暂无数据")}</span></div>
             <div class="rw"><span class="lb">迭代次数</span><span class="vl">{ss.get("iteration",0)}</span></div>
             <div class="rw"><span class="lb">信号数</span><span class="vl">{ss.get("signals_count",0)}</span></div>
         </div>
         <div class="cd">
-            <div class="rw"><span class="lb">持仓数量</span><span class="vl">{ss.get("position_count","?")}</span></div>
+            <div class="rw"><span class="lb">持仓数量</span><span class="vl">{ss.get("position_count","暂无数据")}</span></div>
             <div class="rw"><span class="lb">持仓市值</span><span class="vl">{_money(ss.get("position_market_value"))}</span></div>
-            <div class="rw"><span class="lb">现金</span><span class="vl">{_money(ss.get("cash"), "未知")}</span></div>
+            <div class="rw"><span class="lb">现金</span><span class="vl">{_money(ss.get("cash"), "暂无数据")}</span></div>
             <div class="rw"><span class="lb">总资产</span><span class="vl">{_money(ss.get("total_equity"))}</span></div>
             <div class="rw"><span class="lb">未实现盈亏</span><span class="vl">{_money(ss.get("unrealized_pnl"))}</span></div>
             <div class="rw"><span class="lb">估值状态</span><span class="vl">{valuation_text}</span></div>
@@ -143,10 +155,10 @@ def run() -> None:
 
     # ── 模块2: 今日信号 ──
     with c2:
-        st.markdown('<div class="mt">🎯 Today Signals</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mt">🎯 今日信号</div>', unsafe_allow_html=True)
         sigs = list(reversed(trades[-10:] if len(trades) > 10 else trades))
         if not sigs:
-            st.markdown('<div class="cd"><span style="color:#94A3B8;font-size:12px;">信号将由后台引擎持续生成...</span></div>', unsafe_allow_html=True)
+            st.markdown('<div class="cd"><span style="color:#94A3B8;font-size:12px;">暂无信号 —— 等待后台引擎生成...</span></div>', unsafe_allow_html=True)
         else:
             for s in sigs[:10]:
                 act = s.get("action", "hold").upper()
@@ -158,7 +170,7 @@ def run() -> None:
 
     # ── 模块3: 绩效 ──
     with c3:
-        st.markdown('<div class="mt">📈 Performance</div>', unsafe_allow_html=True)
+        st.markdown('<div class="mt">📈 模拟绩效</div>', unsafe_allow_html=True)
         simulator_initialized = bool(ss.get("simulator_initialized", False))
         simulator_value = ss.get("simulator_value")
         simulator_pnl = ss.get("simulator_pnl")
@@ -181,13 +193,13 @@ def run() -> None:
             <div class="kc"><div class="kl">模拟盘资产</div><div class="kv {sc}">{simulator_value_text}</div></div>
             <div class="kc"><div class="kl">模拟盘盈亏</div><div class="kv {sc}">{simulator_pnl_text}</div></div>
             <div class="kc"><div class="kl">模拟交易</div><div class="kv">{trade_count}</div></div>
-            <div class="kc"><div class="kl">Iterations</div><div class="kv">{ss.get("iteration",0)}</div></div>
+            <div class="kc"><div class="kl">迭代次数</div><div class="kv">{ss.get("iteration",0)}</div></div>
         </div>
         """, unsafe_allow_html=True)
 
         # ── 资金曲线图 ──
         if simulator_initialized and len(curve) >= 2:
-            st.markdown('<div class="mt" style="margin-top:10px;">📈 Equity Curve</div>', unsafe_allow_html=True)
+            st.markdown('<div class="mt" style="margin-top:10px;">📈 资金曲线</div>', unsafe_allow_html=True)
             df = pd.DataFrame(curve)
             if "equity" in df.columns:
                 df["equity"] = pd.to_numeric(df["equity"], errors="coerce")
@@ -196,12 +208,17 @@ def run() -> None:
                     chart_data.index = df["date"]
                 st.line_chart(chart_data, height=200, width="stretch")
         elif not simulator_initialized:
-            st.caption("模拟盘未初始化")
+            st.caption("模拟盘未初始化，等待后台启动…")
         else:
             st.caption("资金曲线由后台引擎持续生成...")
 
     # ── 建议留痕 ─────────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">💡 建议留痕</div>', unsafe_allow_html=True)
+
+    st.caption(
+        "**建议留痕**：记录系统曾经给过的建议（买入、卖出、持有、观察、风险提示），"
+        "便于日后回顾和复盘验证。每条建议包含股票代码、动作、价格、置信度和理由。"
+    )
 
     try:
         from northstar.data.recommendation_store import list_recommendations, add_recommendation
@@ -210,7 +227,7 @@ def run() -> None:
 
         if not recs:
             st.markdown(
-                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无建议记录 —— 使用下方表单新增建议</div>',
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无建议记录 —— 等待系统生成第一条建议，或使用下方表单手动新增</div>',
                 unsafe_allow_html=True,
             )
 
@@ -279,6 +296,11 @@ def run() -> None:
     # ── 建议复盘 v2 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📋 建议复盘</div>', unsafe_allow_html=True)
 
+    st.caption(
+        "**建议复盘**：查看每条建议之后股票涨跌情况，判断建议是否正确、是否到了复盘时间。"
+        "可筛选股票代码、建议动作、复盘状态，并按涨跌幅排序。"
+    )
+
     try:
         from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct
         from northstar.data.recommendation_store import update_recommendation_review, get_all_recommendations
@@ -290,7 +312,7 @@ def run() -> None:
 
         if not all_recs:
             st.markdown(
-                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无可复盘建议</div>',
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无建议数据，暂无可复盘建议 —— 新增建议后，系统会自动计算涨跌幅和复盘时间</div>',
                 unsafe_allow_html=True,
             )
         else:
@@ -511,6 +533,11 @@ def run() -> None:
     # ── 复盘摘要结论 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">🧭 复盘摘要结论</div>', unsafe_allow_html=True)
 
+    st.caption(
+        "**复盘摘要**：根据所有已复盘建议自动生成的统计结论，包含整体胜率、平均涨跌幅、"
+        "样本可信度等指标，帮助你判断系统建议质量。"
+    )
+
     try:
         from northstar.data.recommendation_review import (
             generate_recommendation_review_summary,
@@ -553,6 +580,8 @@ def run() -> None:
                 st.success(summary["headline"])
                 for b in summary["bullets"]:
                     st.markdown(f"- {b}")
+        else:
+            st.info("暂无建议数据，无法生成复盘摘要 —— 新增建议并运行一段时间后会自动生成统计结论")
     except ImportError:
         pass
     except Exception:
@@ -560,6 +589,11 @@ def run() -> None:
 
     # ── 复盘数据体检 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">🩺 复盘数据体检</div>', unsafe_allow_html=True)
+
+    st.caption(
+        "**数据体检**：检查建议数据的完整性和质量，包括是否缺少股票代码、建议价格、"
+        "复盘状态是否一致等。发现的问题会列出明细，便于修正。"
+    )
 
     try:
         from northstar.data.recommendation_review import get_recommendation_review_data_health, format_change_pct
@@ -570,67 +604,70 @@ def run() -> None:
         except Exception:
             health_recs = []
 
-        health = get_recommendation_review_data_health(health_recs)
-
-        if health["status"] == "ok":
-            st.success(health["summary"])
-        elif health["status"] == "warning":
-            st.warning(health["summary"])
+        if not health_recs:
+            st.info("暂无建议数据，无法进行数据体检 —— 新增建议后会自动检查数据质量")
         else:
-            st.error(health["summary"])
+            health = get_recommendation_review_data_health(health_recs)
 
-        # Metric cards
-        hc1, hc2, hc3, hc4 = st.columns(4)
-        hc1.metric("建议总数", health.get("total_count", 0))
-        hc2.metric("数据健康分", f'{health.get("health_score", 100):.0f}')
-        hc3.metric("问题总数", health.get("issue_count", 0))
-        hc4.metric("受影响记录", health.get("affected_count", 0))
+            if health["status"] == "ok":
+                st.success(health["summary"])
+            elif health["status"] == "warning":
+                st.warning(health["summary"])
+            else:
+                st.error(health["summary"])
 
-        # Issue type table
-        issues_by_type = health.get("issues_by_type", {})
-        non_zero_issues = {k: v for k, v in issues_by_type.items() if v > 0}
+            # Metric cards
+            hc1, hc2, hc3, hc4 = st.columns(4)
+            hc1.metric("建议总数", health.get("total_count", 0))
+            hc2.metric("数据健康分", f'{health.get("health_score", 100):.0f}')
+            hc3.metric("问题总数", health.get("issue_count", 0))
+            hc4.metric("受影响记录", health.get("affected_count", 0))
 
-        if non_zero_issues:
-            issue_labels = {
-                "missing_symbol": "缺少股票代码",
-                "missing_action": "缺少建议动作",
-                "unknown_action": "无法识别建议动作",
-                "missing_recommendation_price": "缺少建议价",
-                "missing_current_price": "已复盘但缺少当前价",
-                "missing_change_pct": "已复盘但缺少涨跌幅",
-                "invalid_date": "日期格式异常",
-                "review_status_inconsistent": "复盘状态不一致",
-                "outcome_unknown": "已复盘但无法判断胜负",
-            }
-            issue_rows_table = []
-            for issue_key, count in sorted(non_zero_issues.items(), key=lambda x: -x[1]):
-                issue_rows_table.append({
-                    "问题类型": issue_labels.get(issue_key, issue_key),
-                    "数量": count,
-                })
-            st.markdown("**问题类型统计**")
-            import pandas as _pd_health
-            st.dataframe(_pd_health.DataFrame(issue_rows_table), use_container_width=True, hide_index=True)
-        else:
-            st.caption("暂无数据质量问题")
+            # Issue type table
+            issues_by_type = health.get("issues_by_type", {})
+            non_zero_issues = {k: v for k, v in issues_by_type.items() if v > 0}
 
-        # Issue detail table
-        issue_rows = health.get("issue_rows", [])
-        if issue_rows:
-            st.markdown("**问题明细（前 20 条）**")
-            detail_table = []
-            for r in issue_rows:
-                detail_table.append({
-                    "序号": r.get("index", 0) + 1,
-                    "股票代码": r.get("symbol", "—"),
-                    "日期": r.get("date", "—"),
-                    "复盘状态": r.get("review_status", "—"),
-                    "问题说明": r.get("message", ""),
-                })
-            import pandas as _pd_detail
-            st.dataframe(_pd_detail.DataFrame(detail_table), use_container_width=True, hide_index=True)
-        else:
-            st.caption("暂无问题明细")
+            if non_zero_issues:
+                issue_labels = {
+                    "missing_symbol": "缺少股票代码",
+                    "missing_action": "缺少建议动作",
+                    "unknown_action": "无法识别建议动作",
+                    "missing_recommendation_price": "缺少建议价",
+                    "missing_current_price": "已复盘但缺少当前价",
+                    "missing_change_pct": "已复盘但缺少涨跌幅",
+                    "invalid_date": "日期格式异常",
+                    "review_status_inconsistent": "复盘状态不一致",
+                    "outcome_unknown": "已复盘但无法判断胜负",
+                }
+                issue_rows_table = []
+                for issue_key, count in sorted(non_zero_issues.items(), key=lambda x: -x[1]):
+                    issue_rows_table.append({
+                        "问题类型": issue_labels.get(issue_key, issue_key),
+                        "数量": count,
+                    })
+                st.markdown("**问题类型统计**")
+                import pandas as _pd_health
+                st.dataframe(_pd_health.DataFrame(issue_rows_table), use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无数据质量问题")
+
+            # Issue detail table
+            issue_rows = health.get("issue_rows", [])
+            if issue_rows:
+                st.markdown("**问题明细（前 20 条）**")
+                detail_table = []
+                for r in issue_rows:
+                    detail_table.append({
+                        "序号": r.get("index", 0) + 1,
+                        "股票代码": r.get("symbol", "—"),
+                        "日期": r.get("date", "—"),
+                        "复盘状态": r.get("review_status", "—"),
+                        "问题说明": r.get("message", ""),
+                    })
+                import pandas as _pd_detail
+                st.dataframe(_pd_detail.DataFrame(detail_table), use_container_width=True, hide_index=True)
+            else:
+                st.caption("暂无问题明细")
 
     except ImportError:
         pass
@@ -639,6 +676,11 @@ def run() -> None:
 
     # ── 复盘快照 ─────────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📝 复盘快照</div>', unsafe_allow_html=True)
+
+    st.caption(
+        "**复盘快照**：手动保存当前复盘统计结果，便于日后对比系统建议质量变化趋势。"
+        "点击「保存当前复盘快照」记录此刻的统计状态。"
+    )
 
     try:
         from northstar.data.recommendation_review_snapshot import (
@@ -653,7 +695,7 @@ def run() -> None:
             snap_time = latest_snap.get("created_at", "")[-8:] if latest_snap.get("created_at") else ""
             st.caption(f"最近快照：{snap_time}")
         else:
-            st.caption("暂无复盘快照")
+            st.caption("暂无复盘快照 —— 运行一段时间后点击下方按钮保存第一份快照")
 
         # Save button
         col_snap1, col_snap2 = st.columns([1, 4])
@@ -723,6 +765,11 @@ def run() -> None:
     # ── 复盘趋势 ─────────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📈 复盘趋势</div>', unsafe_allow_html=True)
 
+    st.caption(
+        "**复盘趋势**：基于多次复盘快照绘制的胜率、涨跌幅、样本数变化趋势图，"
+        "直观展示系统建议质量随时间的变化。至少需要 2 条快照才能显示。"
+    )
+
     try:
         from northstar.data.recommendation_review_snapshot import (
             get_recommendation_review_snapshot_trend,
@@ -734,7 +781,7 @@ def run() -> None:
 
         if len(trend_data) < 2:
             st.markdown(
-                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">复盘快照不足，至少需要 2 条快照才能展示趋势。</div>',
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">复盘快照不足，至少需要 2 条快照才能展示趋势 —— 请先在上方保存几条复盘快照</div>',
                 unsafe_allow_html=True,
             )
         else:
@@ -800,6 +847,10 @@ def run() -> None:
     # ── 建议复盘统计 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 建议复盘统计</div>', unsafe_allow_html=True)
 
+    st.caption(
+        "**建议复盘统计**：整体建议的复盘汇总，包含胜率、涨跌幅、最佳/最差建议等统计指标。"
+    )
+
     try:
         from northstar.data.recommendation_review import get_recommendation_review_stats, format_change_pct
         from northstar.data.recommendation_store import get_all_recommendations as _stats_recs
@@ -811,7 +862,7 @@ def run() -> None:
 
         if not stats_recs:
             st.markdown(
-                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无建议数据</div>',
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无建议数据，暂无统计结果 —— 新增建议并运行一段时间后会自动生成统计</div>',
                 unsafe_allow_html=True,
             )
         else:
@@ -895,6 +946,8 @@ def run() -> None:
     # ── 按股票统计 ───────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 按股票统计</div>', unsafe_allow_html=True)
 
+    st.caption("按股票代码统计的复盘汇总，查看每只股票的建议数量和胜率。")
+
     try:
         from northstar.data.recommendation_review import get_recommendation_symbol_stats, format_change_pct
         from northstar.data.recommendation_store import get_all_recommendations as _sym_recs
@@ -962,6 +1015,8 @@ def run() -> None:
 
     # ── 按建议动作统计 ───────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 按建议动作统计</div>', unsafe_allow_html=True)
+
+    st.caption("按建议动作（买入、卖出、持有等）统计的复盘汇总，查看每种动作的胜率。")
 
     try:
         from northstar.data.recommendation_review import get_recommendation_action_stats, format_change_pct
@@ -1032,6 +1087,8 @@ def run() -> None:
 
     # ── 按复盘周期统计 ───────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 按复盘周期统计</div>', unsafe_allow_html=True)
+
+    st.caption("按复盘周期（短期、中期、长期等）统计的复盘汇总，查看不同周期下的胜率。")
 
     try:
         from northstar.data.recommendation_review import get_recommendation_horizon_stats, format_change_pct
