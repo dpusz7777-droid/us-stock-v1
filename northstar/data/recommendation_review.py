@@ -773,6 +773,113 @@ def build_market_transition_summary(review_rows: list[dict]) -> dict:
         evidence.append(f"transition strength: {strength}")
     return {"status": status, "from_regime": from_regime, "to_regime": to_regime, "confidence": round(confidence, 2), "warning_level": wl, "evidence": evidence}
 
+
+# ── v35: Strategy Failure Early Warning System ──
+
+def build_strategy_failure_risk_summary(review_rows: list[dict]) -> dict:
+    """计算各策略的退化风险分数（只读）。
+
+    规则：
+        risk_score = degradation + regime_mismatch_penalty + volatility_penalty
+        degradation = historical_win_rate - recent_win_rate
+        regime_mismatch: momentum in bear, breakout in sideways
+        volatility_penalty: 基于近期波动率
+
+    返回：
+        {
+            "strategy_failure_risk": {
+                "momentum": {"recent_win_rate": float, "historical_win_rate": float, "degradation": float, "risk_score": float},
+                ...
+            },
+            "high_risk_strategies": list[str],
+            "stable_strategies": list[str]
+        }
+    """
+    from collections import defaultdict
+    result = {"strategy_failure_risk": {}, "high_risk_strategies": [], "stable_strategies": []}
+    if not review_rows or len(review_rows) < 4:
+        return result
+
+    # 拆分近期和远期
+    mid = len(review_rows) // 2
+    recent = review_rows[mid:]
+    historical = review_rows[:mid]
+
+    regime = classify_market_regime(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+
+    def _strategy_metrics(rows):
+        stats = defaultdict(lambda: {"win_count": 0, "total": 0})
+        for r in rows:
+            st = classify_strategy_type(r); g = r.get("review_grade","")
+            if g in ("有效", "失效"):
+                stats[st]["total"] += 1
+                if g == "有效": stats[st]["win_count"] += 1
+        return {k: round(v["win_count"]/v["total"]*100, 1) if v["total"]>0 else 0.0 for k, v in stats.items()}
+
+    hist_rates = _strategy_metrics(historical)
+    recent_rates = _strategy_metrics(recent)
+
+    vol = 0.0
+    cps = []; 
+    for r in review_rows:
+        cp = r.get("change_pct")
+        try: v = float(cp) if cp is not None else None
+        except: v = None
+        if v is not None: cps.append(v)
+    if cps:
+        avg = sum(cps)/len(cps)
+        vol = (sum((x-avg)**2 for x in cps)/len(cps))**0.5
+
+    regime_mismatch_map = {"momentum": ["bear", "sideways"], "breakout": ["bear", "sideways"], "mean_reversion": ["bull", "high_volatility"]}
+    vol_penalty = min(vol/10, 0.3) if vol > 0 else 0.0
+
+    all_strategies = set(list(hist_rates.keys()) + list(recent_rates.keys()))
+    for st in all_strategies:
+        hist_wr = hist_rates.get(st, 0.0)
+        recent_wr = recent_rates.get(st, 0.0)
+        degradation = max(0.0, (hist_wr - recent_wr) / 100)  # 归一化到 0~1
+
+        mismatch_penalty = 0.0
+        bad_regimes = regime_mismatch_map.get(st, [])
+        if regime in bad_regimes:
+            mismatch_penalty = 0.15
+        if transition.get("is_transitioning") and regime in bad_regimes:
+            mismatch_penalty = 0.25
+
+        risk = round(min(degradation + mismatch_penalty + vol_penalty, 1.0), 2)
+
+        result["strategy_failure_risk"][st] = {
+            "recent_win_rate": recent_wr,
+            "historical_win_rate": hist_wr,
+            "degradation": round(degradation, 2),
+            "risk_score": risk,
+        }
+
+    for st, data in result["strategy_failure_risk"].items():
+        if data["risk_score"] >= 0.3:
+            result["high_risk_strategies"].append(st)
+        elif data["risk_score"] < 0.15:
+            result["stable_strategies"].append(st)
+
+    return result
+
+def build_strategy_failure_warning(review_rows: list[dict]) -> dict:
+    """策略失效预警摘要（只读）。"""
+    risk = build_strategy_failure_risk_summary(review_rows)
+    hr = risk.get("high_risk_strategies", [])
+    n_high = len(hr)
+    if n_high >= 2:
+        wl = "high"; st = "degrading"
+    elif n_high == 1:
+        wl = "medium"; st = "watch"
+    elif n_high == 0 and risk["strategy_failure_risk"]:
+        wl = "low"; st = "stable"
+    else:
+        wl = "none"; st = "insufficient_data"
+    affected = [{"strategy": s, "reason": "risk_score >= 0.3", "score": risk["strategy_failure_risk"][s]["risk_score"]} for s in hr]
+    return {"warning_level": wl, "affected_strategies": affected, "system_status": st}
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
