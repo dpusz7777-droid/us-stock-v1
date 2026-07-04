@@ -970,6 +970,165 @@ def get_recommendation_horizon_stats(recommendations: list[dict]) -> list[dict]:
     return result_rows
 
 
+def generate_recommendation_review_summary(
+    overall_stats: dict,
+    symbol_stats: list[dict],
+    action_stats: list[dict],
+    horizon_stats: list[dict],
+) -> dict:
+    """生成复盘摘要结论。
+
+    参数：
+        overall_stats: get_recommendation_review_stats 返回的 dict
+        symbol_stats: get_recommendation_symbol_stats 返回的 list
+        action_stats: get_recommendation_action_stats 返回的 list
+        horizon_stats: get_recommendation_horizon_stats 返回的 list
+
+    返回：
+        dict:
+            status: str               no_data / low_confidence / ok
+            headline: str             一句话headline
+            bullets: list[str]       结构化bullet列表
+            warnings: list[str]      警告列表
+            best_symbol: dict|None   最佳股票
+            best_action: dict|None   最佳建议动作
+            best_horizon: dict|None  最佳复盘周期
+    """
+    bullets: list[str] = []
+    warnings: list[str] = []
+
+    # ── 无数据判断 ──
+    total = overall_stats.get("total_count", 0)
+    if total == 0:
+        return {
+            "status": "no_data",
+            "headline": "暂无足够建议复盘数据",
+            "bullets": ["当前还没有可用于复盘统计的建议记录。"],
+            "warnings": [],
+            "best_symbol": None,
+            "best_action": None,
+            "best_horizon": None,
+        }
+
+    evaluable = overall_stats.get("evaluable_count", 0)
+    if evaluable == 0:
+        return {
+            "status": "no_data",
+            "headline": "暂无可判断样本",
+            "bullets": ["当前建议记录尚未形成可判断胜负的复盘样本。"],
+            "warnings": ["建议先积累更多已复盘记录，再判断北极星的建议质量。"],
+            "best_symbol": None,
+            "best_action": None,
+            "best_horizon": None,
+        }
+
+    # ── 样本量判断 ──
+    conf_level = overall_stats.get("confidence_level", "NO_DATA")
+    if conf_level in ("NO_DATA", "VERY_LOW", "LOW"):
+        status = "low_confidence"
+        warnings.append("当前可判断样本偏少，复盘结论仅供参考。")
+    else:
+        status = "ok"
+
+    # ── headline ──
+    win_rate = overall_stats.get("win_rate")
+    if win_rate is not None:
+        if win_rate >= 65.0:
+            perf = "整体表现较好"
+        elif win_rate >= 45.0:
+            perf = "整体表现中性"
+        else:
+            perf = "整体表现偏弱"
+        confidence_label = overall_stats.get("confidence_label", "")
+        headline = (
+            f"当前北极星建议方向胜率为 {win_rate:.2f}%，"
+            f"{confidence_label}，{perf}。"
+        )
+    else:
+        headline = "当前北极星建议暂无足够复盘数据判断方向胜率。"
+        if status != "low_confidence" and conf_level in ("MEDIUM", "HIGH"):
+            warnings.append("有已复盘记录但无法判断方向胜率，请检查建议动作字段是否完整。")
+
+    # ── 整体 bullet ──
+    if win_rate is not None:
+        bullets.append(
+            f"整体方向胜率 {win_rate:.2f}%，{overall_stats.get('confidence_label', '暂无数据')}（{evaluable} 条可判断样本）。"
+        )
+    else:
+        bullets.append(f"整体暂无方向胜率数据，{overall_stats.get('confidence_label', '暂无数据')}（{evaluable} 条可判断样本）。")
+
+    # ── best_symbol ──
+    best_symbol = None
+    if symbol_stats:
+        eligible = [s for s in symbol_stats if s.get("evaluable_count", 0) >= 3 and s.get("win_rate") is not None]
+        if eligible:
+            best_symbol = max(eligible, key=lambda x: (x["win_rate"], x.get("avg_normalized_change_pct") or 0, x.get("evaluable_count", 0)))
+            bullets.append(
+                f"按股票看，{best_symbol['symbol']} 当前方向胜率较高，为 {best_symbol['win_rate']:.2f}%，"
+                f"可判断样本 {best_symbol['evaluable_count']} 条。"
+            )
+        else:
+            warnings.append("按股票维度暂无足够样本形成可靠结论。")
+    else:
+        warnings.append("按股票维度暂无足够样本形成可靠结论。")
+
+    # ── best_action ──
+    ACTION_DISPLAY_MAP = {
+        "BUY": "买入/看多",
+        "SELL": "卖出/看空",
+        "HOLD": "持有",
+        "WATCH": "观望",
+        "UNKNOWN": "未知",
+    }
+    best_action = None
+    if action_stats:
+        eligible_act = [
+            a for a in action_stats
+            if a.get("evaluable_count", 0) >= 3
+            and a.get("win_rate") is not None
+            and a.get("action_group") != "UNKNOWN"
+        ]
+        if eligible_act:
+            best_action = max(eligible_act, key=lambda x: (x["win_rate"], x.get("avg_normalized_change_pct") or 0, x.get("evaluable_count", 0)))
+            act_display = ACTION_DISPLAY_MAP.get(best_action["action_group"], best_action["action_group"])
+            bullets.append(
+                f"按建议动作看，{act_display}类建议当前表现最好，方向胜率 {best_action['win_rate']:.2f}%。"
+            )
+        else:
+            warnings.append("按建议动作维度暂无足够样本形成可靠结论。")
+    else:
+        warnings.append("按建议动作维度暂无足够样本形成可靠结论。")
+
+    # ── best_horizon ──
+    best_horizon = None
+    if horizon_stats:
+        eligible_hor = [
+            h for h in horizon_stats
+            if h.get("evaluable_count", 0) >= 3
+            and h.get("win_rate") is not None
+            and h.get("horizon_group") != "UNKNOWN"
+        ]
+        if eligible_hor:
+            best_horizon = max(eligible_hor, key=lambda x: (x["win_rate"], x.get("avg_normalized_change_pct") or 0, x.get("evaluable_count", 0)))
+            bullets.append(
+                f"按复盘周期看，{best_horizon['label']}周期当前表现最好，方向胜率 {best_horizon['win_rate']:.2f}%。"
+            )
+        else:
+            warnings.append("按复盘周期维度暂无足够样本形成可靠结论。")
+    else:
+        warnings.append("按复盘周期维度暂无足够样本形成可靠结论。")
+
+    return {
+        "status": status,
+        "headline": headline,
+        "bullets": bullets,
+        "warnings": warnings,
+        "best_symbol": best_symbol,
+        "best_action": best_action,
+        "best_horizon": best_horizon,
+    }
+
+
 def calculate_review_stats(recommendations: list[dict]) -> dict:
     """计算建议复盘统计指标。
 

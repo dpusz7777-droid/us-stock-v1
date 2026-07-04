@@ -508,6 +508,56 @@ def run() -> None:
             unsafe_allow_html=True,
         )
 
+    # ── 复盘摘要结论 ─────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">🧭 复盘摘要结论</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review import (
+            generate_recommendation_review_summary,
+            get_recommendation_review_stats,
+            get_recommendation_symbol_stats,
+            get_recommendation_action_stats,
+            get_recommendation_horizon_stats,
+        )
+        from northstar.data.recommendation_store import get_all_recommendations as _summary_recs
+
+        try:
+            summary_recs = _summary_recs()
+        except Exception:
+            summary_recs = []
+
+        if summary_recs:
+            overall_s = get_recommendation_review_stats(summary_recs)
+            symbol_s = get_recommendation_symbol_stats(summary_recs)
+            action_s = get_recommendation_action_stats(summary_recs)
+            horizon_s = get_recommendation_horizon_stats(summary_recs)
+
+            summary = generate_recommendation_review_summary(
+                overall_stats=overall_s,
+                symbol_stats=symbol_s,
+                action_stats=action_s,
+                horizon_stats=horizon_s,
+            )
+
+            if summary["status"] == "no_data":
+                st.info(summary["headline"])
+                for b in summary["bullets"]:
+                    st.markdown(f"- {b}")
+            elif summary["status"] == "low_confidence":
+                st.warning(summary["headline"])
+                for b in summary["bullets"]:
+                    st.markdown(f"- {b}")
+                for w in summary["warnings"]:
+                    st.caption(f"⚠️ {w}")
+            else:
+                st.success(summary["headline"])
+                for b in summary["bullets"]:
+                    st.markdown(f"- {b}")
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
     # ── 建议复盘统计 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 建议复盘统计</div>', unsafe_allow_html=True)
 
