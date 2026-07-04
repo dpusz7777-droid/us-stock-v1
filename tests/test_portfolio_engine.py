@@ -1,163 +1,141 @@
 # -*- coding: utf-8 -*-
-"""PortfolioEngine 测试。"""
+"""实时账户引擎测试 — PortfolioEngine 的只读测试。"""
 
 from __future__ import annotations
+import sys, unittest
+from pathlib import Path
 
-import unittest
-from decimal import Decimal
-from typing import Any
+PROJECT_ROOT = Path(__file__).parent.parent
+if str(PROJECT_ROOT) not in sys.path: sys.path.insert(0, str(PROJECT_ROOT))
 
-from event_bus import event_bus
-from events import PORTFOLIO_UPDATED
-from portfolio_engine import (
-    PositionInfo,
-    AdjustedPosition,
-    PortfolioRiskResult,
-    PortfolioEngine,
-    portfolio_engine,
-)
-
-
-class TestAdjustedPosition(unittest.TestCase):
-    def test_to_dict(self) -> None:
-        ap = AdjustedPosition(symbol="AAPL", original_size_pct=0.5, adjusted_size_pct=0.4, reduction_pct=0.1)
-        d = ap.to_dict()
-        self.assertEqual(d["symbol"], "AAPL")
-        self.assertEqual(d["original_size_pct"], 0.5)
-        self.assertEqual(d["adjusted_size_pct"], 0.4)
-        self.assertEqual(d["reduction_pct"], 0.1)
-
-
-class TestPortfolioRiskResult(unittest.TestCase):
-    def test_to_dict(self) -> None:
-        pr = PortfolioRiskResult(risk_score=0.3, concentration_score=0.5, single_exposure_max=0.4, top3_exposure=0.7, total_exposure=0.9, regime_multiplier=1.0)
-        d = pr.to_dict()
-        self.assertEqual(d["risk_score"], 0.3)
-        self.assertEqual(d["concentration_score"], 0.5)
-        self.assertIn("timestamp", d)
+from northstar.engine.portfolio_engine import PortfolioEngine
 
 
 class TestPortfolioEngine(unittest.TestCase):
-    def setUp(self) -> None:
-        self.engine = PortfolioEngine()
-        event_bus.clear_log()
+    def setUp(self):
+        self.pe = PortfolioEngine(initial_cash=10000.0, mode="paper")
 
-    def test_single_position_within_limit(self) -> None:
-        """单一仓位 40% < 50% 上限，不调整。"""
-        positions = [PositionInfo("AAPL", 0.4)]
-        adjusted, risk = self.engine.calculate(positions, "BULL")
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.4)
+    def test_initial_state(self):
+        """初始状态正确"""
+        s = self.pe.get_snapshot()
+        self.assertEqual(s["cash"], 10000.0)
+        self.assertEqual(s["positions"], [])
+        self.assertEqual(s["total_value"], 10000.0)
+        self.assertEqual(s["mode"], "paper")
 
-    def test_single_position_exceeds_limit(self) -> None:
-        """单一仓位 80% > 50% 上限，调整为 50%。"""
-        positions = [PositionInfo("AAPL", 0.8)]
-        adjusted, risk = self.engine.calculate(positions, "BULL")
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.5)
+    def test_buy_reduces_cash(self):
+        """买入减少现金"""
+        r = self.pe.buy("AAPL", price=150.0, qty=10)
+        self.assertTrue(r["success"])
+        s = self.pe.get_snapshot()
+        self.assertEqual(s["cash"], 10000.0 - 1500.0)
+        self.assertEqual(len(s["positions"]), 1)
 
-    def test_top3_exceeds_limit(self) -> None:
-        """前3大持仓 90% > 70% 上限，按比例压缩。"""
-        positions = [
-            PositionInfo("A", 0.4),
-            PositionInfo("B", 0.3),
-            PositionInfo("C", 0.2),
-            PositionInfo("D", 0.1),
-        ]
-        adjusted, risk = self.engine.calculate(positions, "BULL")
-        top3_sum = sum(a.adjusted_size_pct for a in adjusted[:3])
-        self.assertLessEqual(top3_sum, 0.71)
+    def test_buy_insufficient_cash(self):
+        """现金不足返回失败"""
+        r = self.pe.buy("AAPL", price=100000.0, qty=1)
+        self.assertFalse(r["success"])
+        self.assertIn("现金不足", r["message"])
 
-    def test_bear_regime_multiplier(self) -> None:
-        """BEAR regime ×0.5。"""
-        positions = [PositionInfo("AAPL", 0.4)]
-        adjusted, risk = self.engine.calculate(positions, "BEAR")
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.20)
+    def test_avg_cost_calculated(self):
+        """平均成本计算正确"""
+        self.pe.buy("AAPL", price=100.0, qty=10)
+        self.pe.buy("AAPL", price=200.0, qty=10)
+        avg = self.pe.avg_cost["AAPL"]
+        self.assertEqual(avg, 150.0)
 
-    def test_high_risk_regime_multiplier(self) -> None:
-        """HIGH_RISK regime ×0.6。"""
-        positions = [PositionInfo("AAPL", 0.4)]
-        adjusted, risk = self.engine.calculate(positions, "HIGH_RISK")
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.24)
+    def test_sell_reduces_position(self):
+        """卖出减少持仓"""
+        self.pe.buy("AAPL", price=150.0, qty=10)
+        r = self.pe.sell("AAPL", price=160.0, qty=5)
+        self.assertTrue(r["success"])
+        s = self.pe.get_snapshot()
+        self.assertEqual(len(s["positions"]), 1)
+        self.assertEqual(s["positions"][0]["qty"], 5.0)
 
-    def test_choppy_regime_multiplier(self) -> None:
-        """CHOPPY regime ×0.7。"""
-        positions = [PositionInfo("AAPL", 0.4)]
-        adjusted, risk = self.engine.calculate(positions, "CHOPPY")
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.28)
+    def test_sell_all_when_qty_none(self):
+        """不传 qty 时全卖"""
+        self.pe.buy("AAPL", price=150.0, qty=10)
+        r = self.pe.sell("AAPL", price=160.0)
+        self.assertTrue(r["success"])
+        self.assertEqual(r["qty"], 10.0)
 
-    def test_bull_regime_multiplier(self) -> None:
-        """BULL regime ×1.0。"""
-        positions = [PositionInfo("AAPL", 0.4)]
-        adjusted, risk = self.engine.calculate(positions, "BULL")
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.4)
+    def test_sell_tracks_realized_pnl(self):
+        """卖出记录已实现盈亏"""
+        self.pe.buy("AAPL", price=100.0, qty=10)
+        self.pe.sell("AAPL", price=110.0, qty=10)
+        self.assertEqual(self.pe.realized_pnl, 100.0)
 
-    def test_risk_score_in_bull(self) -> None:
-        """BULL 下风险分数应低于 HIGH_RISK。"""
-        bull_positions = [PositionInfo("AAPL", 0.3)]
-        hr_positions = [PositionInfo("AAPL", 0.3)]
-        _, bull_risk = self.engine.calculate(bull_positions, "BULL")
-        _, hr_risk = self.engine.calculate(hr_positions, "HIGH_RISK")
-        self.assertLess(bull_risk.risk_score, hr_risk.risk_score)
+    def test_sell_no_position(self):
+        """无持仓时卖出失败"""
+        r = self.pe.sell("AAPL", price=160.0)
+        self.assertFalse(r["success"])
 
-    def test_risk_score_in_high_risk(self) -> None:
-        """HIGH_RISK 下风险分数应该较高。"""
-        positions = [PositionInfo("AAPL", 0.5)]
-        _, risk = self.engine.calculate(positions, "HIGH_RISK")
-        self.assertGreater(risk.risk_score, 0.3)
+    def test_hold_no_op(self):
+        """HOLD 不影响状态"""
+        self.pe.buy("AAPL", price=150.0, qty=10)
+        r = self.pe.hold("AAPL")
+        self.assertTrue(r["success"])
+        s = self.pe.get_snapshot()
+        self.assertEqual(len(s["positions"]), 1)
 
-    def test_risk_score_range(self) -> None:
-        """风险分数必须在 0~1 范围内。"""
-        for regime in ["BULL", "BEAR", "CHOPPY", "HIGH_RISK"]:
-            positions = [PositionInfo(f"S{i}", 0.3) for i in range(5)]
-            _, risk = self.engine.calculate(positions, regime)
-            self.assertGreaterEqual(risk.risk_score, 0.0)
-            self.assertLessEqual(risk.risk_score, 1.0)
+    def test_snapshot_with_market_prices(self):
+        """快照计算未实现盈亏"""
+        self.pe.buy("AAPL", price=100.0, qty=10)
+        s = self.pe.get_snapshot({"AAPL": 110.0})
+        self.assertEqual(s["unrealized_pnl"], 100.0)
+        self.assertEqual(s["position_value"], 1100.0)
 
-    def test_empty_positions(self) -> None:
-        """空持仓应返回空调整列表。"""
-        adjusted, risk = self.engine.calculate([], "BULL")
-        self.assertEqual(len(adjusted), 0)
+    def test_get_position(self):
+        """获取单个持仓"""
+        self.pe.buy("AAPL", price=150.0, qty=10)
+        pos = self.pe.get_position("AAPL")
+        self.assertIsNotNone(pos)
+        self.assertEqual(pos["qty"], 10.0)
 
-    def test_event_published(self) -> None:
-        received: list[dict] = []
-        def listener(data: Any) -> None:
-            received.append(data)
-        event_bus.subscribe(PORTFOLIO_UPDATED, listener)
-        positions = [PositionInfo("AAPL", 0.3)]
-        self.engine.calculate(positions, "BULL")
-        self.assertTrue(len(received) > 0)
-        self.assertIn("risk_result", received[0])
-        self.assertIn("adjusted_positions", received[0])
+    def test_get_position_nonexistent(self):
+        """不存在的持仓返回 None"""
+        pos = self.pe.get_position("NONEXIST")
+        self.assertIsNone(pos)
 
-    def test_top3_after_cap_adjustment(self) -> None:
-        """单票超过 50% 被 cap 后，前3大应按比例压缩。"""
-        positions = [
-            PositionInfo("A", 0.6),
-            PositionInfo("B", 0.3),
-            PositionInfo("C", 0.2),
-        ]
-        adjusted, risk = self.engine.calculate(positions, "BULL")
-        # A 从 0.6 cap 到 0.5, B=0.3, C=0.2 → top3=1.0 > 0.7 → 按比例 0.7/1.0=0.7
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.5 * 0.7)
-        self.assertAlmostEqual(adjusted[1].adjusted_size_pct, 0.3 * 0.7)
+    def test_get_trade_history(self):
+        """交易历史正确记录"""
+        self.pe.buy("AAPL", price=150.0, qty=10)
+        h = self.pe.get_trade_history()
+        self.assertEqual(len(h), 1)
+        self.assertEqual(h[0]["action"], "BUY")
 
-    def test_reduction_pct(self) -> None:
-        """BEAR 下 reduction_pct 应为正值。"""
-        positions = [PositionInfo("AAPL", 0.5)]
-        adjusted, _ = self.engine.calculate(positions, "BEAR")
-        self.assertGreater(adjusted[0].reduction_pct, 0.0)
+    def test_get_summary(self):
+        """摘要结构正确"""
+        self.pe.buy("AAPL", price=150.0, qty=10)
+        summary = self.pe.get_summary()
+        self.assertIn("mode", summary)
+        self.assertIn("cash", summary)
+        self.assertIn("positions_count", summary)
+        self.assertIn("realized_pnl", summary)
+        self.assertEqual(summary["mode"], "paper")
 
-    def test_no_regime_default(self) -> None:
-        """无 regime 时 ×1.0。"""
-        positions = [PositionInfo("AAPL", 0.4)]
-        adjusted, _ = self.engine.calculate(positions)
-        self.assertAlmostEqual(adjusted[0].adjusted_size_pct, 0.4)
+    def test_invalid_mode_raises(self):
+        """非法模式抛出异常"""
+        with self.assertRaises(ValueError):
+            PortfolioEngine(initial_cash=10000, mode="invalid")
 
+    def test_live_mode(self):
+        """live 模式正常工作"""
+        pe = PortfolioEngine(initial_cash=5000, mode="live")
+        self.assertEqual(pe.mode, "live")
+        pe.buy("AAPL", price=100.0, qty=10)
+        s = pe.get_snapshot()
+        self.assertEqual(len(s["positions"]), 1)
 
-class TestGlobalSingleton(unittest.TestCase):
-    def test_portfolio_engine_is_singleton(self) -> None:
-        pe1 = portfolio_engine
-        pe2 = portfolio_engine
-        self.assertIs(pe1, pe2)
+    def test_reset(self):
+        """reset 清空状态"""
+        self.pe.buy("AAPL", price=150.0, qty=10)
+        self.pe.reset(initial_cash=5000.0)
+        s = self.pe.get_snapshot()
+        self.assertEqual(s["cash"], 5000.0)
+        self.assertEqual(len(s["positions"]), 0)
+        self.assertEqual(s["realized_pnl"], 0.0)
 
 
 if __name__ == "__main__":
