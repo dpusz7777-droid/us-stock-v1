@@ -402,6 +402,44 @@ def run() -> None:
                 gc5.metric("📊 有效率", eff_rate)
                 st.caption("有效率 = 有效 / (有效 + 失效)，数据不足和待观察不计入分母。仅用于历史建议验证，不代表未来收益。")
 
+                # ── v17: 复盘质量解释 ──
+                st.markdown('<div class="mt" style="margin-top:16px;">🧠 复盘质量解释</div>', unsafe_allow_html=True)
+                try:
+                    from northstar.data.recommendation_review import build_recommendation_review_quality_explanation
+                    quality = build_recommendation_review_quality_explanation(filtered)
+                    ql = quality.get("quality_level", "")
+                    mi = quality.get("main_issue", "")
+                    exp = quality.get("explanation", "")
+                    na = quality.get("next_action", "")
+                    flags = quality.get("warning_flags", [])
+
+                    # 颜色映射
+                    ql_colors = {
+                        "良好": "✅",
+                        "一般": "⚠️",
+                        "较差": "❌",
+                        "暂无足够样本": "ℹ️",
+                    }
+                    ql_icon = ql_colors.get(ql, "ℹ️")
+
+                    st.markdown(
+                        f'<div class="cd">'
+                        f'<div class="rw"><span class="lb">样本质量等级</span><span class="vl" style="font-size:14px;">{ql_icon} {ql}</span></div>'
+                        f'<div class="rw"><span class="lb">当前主要问题</span><span class="vl" style="font-size:13px;">{mi}</span></div>'
+                        f'<div class="rw"><span class="lb">人话解释</span><span style="color:#475569;font-size:12px;flex:1;text-align:right;">{exp}</span></div>'
+                        f'<div class="rw" style="border-bottom:none;"><span class="lb">下一步建议</span><span style="color:#2563EB;font-size:12px;flex:1;text-align:right;">{na}</span></div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                    if flags:
+                        st.caption(f"问题标签：{' · '.join(flags)}")
+                    st.caption("仅用于历史复盘验证，不构成投资建议。")
+                except Exception as exc:
+                    st.markdown(
+                        f'<div class="cd" style="color:#B45309;font-size:11px;">复盘质量解释异常: {exc}</div>',
+                        unsafe_allow_html=True,
+                    )
+
                 # ── 每条记录展示（含分级） ──
                 for r in filtered:
                     # ── 计算分级 ──

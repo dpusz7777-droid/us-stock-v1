@@ -1577,3 +1577,147 @@ def calculate_review_stats(recommendations: list[dict]) -> dict:
         "avg_change_pct": avg_change_pct,
         "win_rates": win_rates,
     }
+
+
+def build_recommendation_review_quality_explanation(review_rows: list[dict]) -> dict:
+    """对当前建议复盘结果进行只读质量解释。
+
+    参数：
+        review_rows: review_recommendations 返回的复盘结果列表，
+                     或者包含 classify_recommendation_review_result 分级标签的记录列表
+
+    返回：
+        {
+            "quality_level": str,        良好 / 一般 / 较差 / 暂无足够样本
+            "main_issue": str,            当前最主要问题
+            "explanation": str,           一句人话解释
+            "next_action": str,           下一步建议
+            "warning_flags": list[str],   问题标签列表
+        }
+
+    规则（简单透明，不依赖 AI 模型）：
+        1. 总建议数 = 0 → 暂无足够样本
+        2. 数据不足数量 / 总建议数 >= 50% → 较差 / 数据不足过多
+        3. 有效+失效 样本数 < 3 → 一般 / 可判断样本太少
+        4. 失效数量 > 有效数量 → 一般 / 失效建议多于有效建议
+        5. 有效率 >= 60% 且 样本数 >= 3 → 良好
+        6. 其他 → 一般 / 样本仍需积累
+
+    安全原则：
+        - 只读计算，不写回任何文件
+        - 字段缺失时不会崩溃
+        - 不构成投资建议
+    """
+    try:
+        if not review_rows:
+            return {
+                "quality_level": "暂无足够样本",
+                "main_issue": "暂无建议记录",
+                "explanation": "还没有足够建议可供复盘，请先运行系统生成建议或手动新增建议。",
+                "next_action": "先运行系统生成建议，再观察一段时间后查看复盘质量分析。",
+                "warning_flags": ["暂无建议记录"],
+            }
+
+        total = len(review_rows)
+        insufficient = 0
+        valid = 0
+        watch = 0
+        invalid = 0
+
+        for row in review_rows:
+            # 优先使用已有分级标签，如果没有则尝试调用分级函数
+            grade = row.get("review_grade")
+            if grade is None:
+                try:
+                    from northstar.data.recommendation_review import classify_recommendation_review_result
+                    grade_result = classify_recommendation_review_result(row)
+                    grade = grade_result.get("review_grade", "数据不足")
+                except Exception:
+                    grade = "数据不足"
+
+            if grade == "有效":
+                valid += 1
+            elif grade == "失效":
+                invalid += 1
+            elif grade == "待观察":
+                watch += 1
+            else:
+                insufficient += 1
+
+        effective_sample = valid + invalid
+
+        # 规则 2：数据不足占比 >= 50%
+        if total > 0 and insufficient / total >= 0.5:
+            return {
+                "quality_level": "较差",
+                "main_issue": "数据不足过多",
+                "explanation": (
+                    f"当前 {total} 条建议中，{insufficient} 条存在数据不足问题"
+                    f"（占比 {insufficient / total * 100:.0f}%），"
+                    f"很多建议缺少价格、动作或日期，当前有效率参考价值有限。"
+                ),
+                "next_action": "优先补齐建议价格、当前价格、动作和日期字段，减少数据不足占比。",
+                "warning_flags": ["数据不足占比过高", "建议补充建议价格和动作"],
+            }
+
+        # 规则 3：有效+失效 样本数 < 3
+        if effective_sample < 3:
+            return {
+                "quality_level": "一般",
+                "main_issue": "可判断样本太少",
+                "explanation": (
+                    f"当前 {total} 条建议中，可判断对错的建议仅有 {effective_sample} 条，"
+                    f"有效率和复盘结论还不够稳定。"
+                ),
+                "next_action": "继续积累建议样本，至少达到 3 条可判断样本后再看有效率。",
+                "warning_flags": ["可判断样本不足"],
+            }
+
+        # 规则 4：失效数量 > 有效数量
+        if invalid > valid:
+            return {
+                "quality_level": "一般",
+                "main_issue": "失效建议多于有效建议",
+                "explanation": (
+                    f"当前 {effective_sample} 条可判断样本中，"
+                    f"有效 {valid} 条、失效 {invalid} 条，"
+                    f"错误方向多于正确方向，需要谨慎参考。"
+                ),
+                "next_action": "复查失效建议集中在哪些动作、标的或市场环境，分析失效原因。",
+                "warning_flags": ["失效建议多于有效建议", "建议复查失效原因"],
+            }
+
+        # 规则 5：有效率 >= 60% 且 样本数 >= 3
+        rate = valid / effective_sample * 100
+        if rate >= 60.0 and effective_sample >= 3:
+            return {
+                "quality_level": "良好",
+                "main_issue": "暂无明显问题",
+                "explanation": (
+                    f"当前 {effective_sample} 条可判断样本中，"
+                    f"有效建议占比 {rate:.1f}%，整体历史表现较好，但仍需继续观察。"
+                ),
+                "next_action": "继续保存复盘快照，观察有效率是否稳定，确保有足够样本支持结论。",
+                "warning_flags": [],
+            }
+
+        # 规则 6：其他
+        return {
+            "quality_level": "一般",
+            "main_issue": "样本仍需积累",
+            "explanation": (
+                f"当前 {effective_sample} 条可判断样本，有效率 {rate:.1f}%，"
+                f"可以参考但结论还不够稳定。"
+            ),
+            "next_action": "继续积累建议和复盘快照，等样本增多后再做判断。",
+            "warning_flags": ["样本仍需积累"],
+        }
+
+    except Exception:
+        return {
+            "quality_level": "暂无足够样本",
+            "main_issue": "质量分析异常",
+            "explanation": "分析复盘质量时出现异常，请确认建议数据格式正确。",
+            "next_action": "检查建议数据格式，确保字段完整。",
+            "warning_flags": ["质量分析异常"],
+        }
