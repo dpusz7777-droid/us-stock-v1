@@ -301,6 +301,15 @@ def run() -> None:
         "可筛选股票代码、建议动作、复盘状态，并按涨跌幅排序。"
     )
 
+    st.info(
+        "💡 **复盘操作指引**\n\n"
+        "1️⃣ 先看 **复盘决策看板** —— 了解整体有效率和分级分布\n"
+        "2️⃣ 再看 **复盘质量解释** —— 判断这个有效率是否可信\n"
+        "3️⃣ 然后看明细表 —— 重点关注 **失效** 和 **数据不足** 的建议\n"
+        "4️⃣ 定期保存 **复盘快照** —— 用于观察趋势变化\n\n"
+        "仅用于历史复盘验证，不构成投资建议"
+    )
+
     try:
         from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct, classify_recommendation_review_result
         from northstar.data.recommendation_store import update_recommendation_review, get_all_recommendations
@@ -319,8 +328,29 @@ def run() -> None:
             # ── 计算复盘数据（全量，用于筛选和排序） ──
             review_data = review_recommendations(all_recs)
 
+            # 先计算每条记录的分级，用于排序
+            for rd in review_data:
+                if "review_grade" not in rd:
+                    try:
+                        rd["review_grade"] = classify_recommendation_review_result(rd).get("review_grade", "数据不足")
+                    except Exception:
+                        rd["review_grade"] = "数据不足"
+
+            # ── 按分级优先级排序：失效 > 数据不足 > 待观察 > 有效 ──
+            grade_priority = {"失效": 0, "数据不足": 1, "待观察": 2, "有效": 3}
+            try:
+                review_data.sort(key=lambda x: (
+                    grade_priority.get(x.get("review_grade", "数据不足"), 99),
+                    -abs(x.get("change_pct", 0) or 0),  # 同分级内按涨跌幅绝对值倒序
+                ))
+            except Exception:
+                pass  # 排序异常不崩溃
+
             # ── 筛选控件 ──
-            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            col_f1, col_f2, col_f3, col_f4, col_f5 = st.columns(5)
+
+            st.caption("💡 优先查看 失效 → 数据不足 → 待观察 → 有效。有效建议用于总结经验，失效建议用于复盘原因，数据不足建议用于补齐字段。")
+
             with col_f1:
                 filter_symbol = st.text_input("🔍 股票代码", value="", key="rv_sym", placeholder="NVDA").strip().upper()
             with col_f2:
@@ -329,11 +359,13 @@ def run() -> None:
                 filter_status = st.selectbox("复盘状态", ["全部", "上涨", "下跌", "持平", "无法计算", "价格获取失败", "缺少建议价格，无法计算收益率", "请使用英文股票代码，例如 NVDA"], key="rv_sts")
             with col_f4:
                 filter_due = st.selectbox("到期筛选", ["全部", "已到复盘时间", "未到复盘时间"], key="rv_due")
+            with col_f5:
+                filter_grade = st.selectbox("分级筛选", ["全部", "失效", "数据不足", "待观察", "有效"], key="rv_grade")
 
             # ── 排序控件 ──
             sort_option = st.selectbox(
                 "排序方式",
-                ["创建时间倒序", "涨跌幅从高到低", "涨跌幅从低到高", "已过天数从高到低", "股票代码排序"],
+                ["分级优先(失效→有效)", "创建时间倒序", "涨跌幅从高到低", "涨跌幅从低到高", "已过天数从高到低", "股票代码排序"],
                 key="rv_sort",
             )
 
@@ -354,6 +386,11 @@ def run() -> None:
                     continue
                 if filter_due == "未到复盘时间" and r.get("due_for_review", False):
                     continue
+                # 分级筛选
+                if filter_grade != "全部":
+                    rd_grade = r.get("review_grade", "数据不足")
+                    if rd_grade != filter_grade:
+                        continue
                 filtered.append(r)
 
             # ── 执行排序 ──
@@ -780,6 +817,13 @@ def run() -> None:
             st.caption(f"最近快照：{snap_time}")
         else:
             st.caption("暂无复盘快照 —— 运行一段时间后点击下方按钮保存第一份快照")
+
+        st.info(
+            "💡 **快照使用提示**\n\n"
+            "• 建议每次完成一轮复盘后保存快照，便于历史对比\n"
+            "• 至少保存 **2 条快照** 后才能观察趋势变化\n"
+            "• 快照用于历史复盘验证，不代表未来收益"
+        )
 
         # Save button
         col_snap1, col_snap2 = st.columns([1, 4])
