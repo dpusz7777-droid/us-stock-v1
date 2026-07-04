@@ -200,6 +200,82 @@ def run() -> None:
         else:
             st.caption("资金曲线由后台引擎持续生成...")
 
+    # ── 建议留痕 ─────────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">💡 建议留痕</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_store import list_recommendations, add_recommendation
+
+        recs = list_recommendations(limit=20)
+
+        if not recs:
+            st.markdown(
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无建议记录 —— 使用下方表单新增建议</div>',
+                unsafe_allow_html=True,
+            )
+
+        for r in recs:
+            act = r.get("action", "—")
+            act_color = {
+                "买入": "sbuy", "卖出": "ssell", "持有": "shold",
+                "观察": "shold", "风险提示": "ssell",
+            }.get(act, "shold")
+            price_str = f"${r['price']:.2f}" if r.get("price") is not None else "—"
+            conf = r.get("confidence", "—")
+            status = r.get("status", "open")
+            status_tag = "🔴 待验证" if status == "open" else "✅ 已验证"
+            ts = r.get("created_at", "")[-8:] if r.get("created_at") else ""
+            symbol = r.get("symbol", "?")
+            reason = r.get("reason", "") or ""
+            st.markdown(
+                f'<div class="sg">'
+                f'<span class="sb {act_color}">{act}</span>'
+                f'<span class="stk">{symbol}</span>'
+                f'<span class="srs">{price_str} · {conf} · {status_tag} · {reason}</span>'
+                f'<span class="fts">{ts}</span>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        # ── 新增建议表单 ──
+        with st.expander("✏️ 新增建议", expanded=False):
+            col_a, col_b, col_c, col_d = st.columns([2, 2, 2, 4])
+            with col_a:
+                rec_symbol = st.text_input("股票代码", value="", key="rec_sym", placeholder="NVDA")
+            with col_b:
+                rec_action = st.selectbox("建议动作", ["买入", "持有", "卖出", "观察", "风险提示"], key="rec_act")
+            with col_c:
+                rec_price = st.number_input("当前价格 ($)", min_value=0.0, step=0.01, value=0.0, key="rec_prc")
+            with col_d:
+                rec_confidence = st.selectbox("置信度", ["低", "中", "高"], key="rec_conf")
+            rec_reason = st.text_area("理由", value="", key="rec_reason", placeholder="简要说明建议理由...", max_chars=200)
+            if st.button("💾 保存建议", type="primary", key="rec_save"):
+                if not rec_symbol.strip():
+                    st.warning("请输入股票代码")
+                else:
+                    result = add_recommendation(
+                        symbol=rec_symbol,
+                        action=rec_action,
+                        price=rec_price if rec_price > 0 else None,
+                        confidence=rec_confidence,
+                        reason=rec_reason,
+                    )
+                    if result:
+                        st.success(f"建议已保存: {rec_symbol} → {rec_action}")
+                        st.rerun()
+                    else:
+                        st.error("保存失败，请检查输入")
+    except ImportError as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#DC2626;font-size:11px;">建议留痕模块未加载: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#B45309;font-size:11px;">建议留痕异常: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown('<div class="ftr">北极星 · 仅用于研究参考 · 不构成投资建议</div>', unsafe_allow_html=True)
 
 

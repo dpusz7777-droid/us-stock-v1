@@ -73,10 +73,14 @@ logs/*.log
 
 # ── 运行缓存 ──
 .cache/
-northstar/runtime/*.pid
+northstar/runtime/
 northstar.lock
 northstar.browser_opened
 northstar_crash.log
+
+# ── 运行时用户数据 ──
+northstar/data/recommendations.json
+logs/codex_*.txt
 
 # ── 临时恢复文件 ──
 restored_ui.py
