@@ -557,6 +557,50 @@ def render_recommendation_review_section(
     except Exception:
         pass
 
+    # ── v39: Research Agent Core ──
+    try:
+        from northstar.data.recommendation_review import run_research_agent_core, build_research_agent_report
+        ra_recs = get_all_recommendations_fn()
+        if ra_recs:
+            core = run_research_agent_core(ra_recs)
+            ra_report = build_research_agent_report(ra_recs)
+            with st.expander("🧠 Research Agent Core", expanded=False):
+                st.caption("**研究代理核心**：自动提出研究问题、构建分析链、生成最终报告。")
+                rq = core.get("research_questions", [])
+                if rq:
+                    st.markdown("**Research Questions**")
+                    for q in rq:
+                        st.markdown(f"- {q}")
+                ac = core.get("analysis_chains", [])
+                if ac:
+                    st.markdown("**Analysis Chains**")
+                    for i, chain in enumerate(ac[:3]):
+                        with st.expander(f"Chain {i+1}: {chain.get('question', '')[:60]}...", expanded=False):
+                            st.markdown(f"**Conclusion**: {chain.get('conclusion', '')}")
+                            st.markdown("**Steps**")
+                            for step in chain.get("steps", []):
+                                st.markdown(f"- {step}")
+                            if chain.get("evidence"):
+                                st.markdown("**Evidence**")
+                                for e in chain["evidence"][:5]:
+                                    st.markdown(f"- {e}")
+                fr = core.get("final_report", {})
+                if fr.get("summary") or fr.get("recommendations"):
+                    st.markdown("**Final Report**")
+                    st.markdown("**Summary**")
+                    for s in fr.get("summary", []):
+                        st.markdown(f"- {s}")
+                    st.markdown("**Recommendations**")
+                    for r in fr.get("recommendations", []):
+                        st.markdown(f"- {r}")
+                conf = core.get("confidence", 0)
+                st.metric("Agent Confidence", f"{conf:.0%}")
+                st.caption("研究代理仅基于历史数据作分析，不构成投资建议。")
+        else:
+            pass
+    except Exception:
+        pass
+
     # ── v36: Portfolio Intelligence Layer ──
     try:
         from northstar.data.recommendation_review import build_portfolio_intelligence_summary, build_portfolio_rebalance_insight

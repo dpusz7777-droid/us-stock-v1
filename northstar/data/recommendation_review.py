@@ -1272,6 +1272,199 @@ def build_evolution_report(review_rows: list[dict]) -> dict:
     }
 
 
+# ── v39: Research Agent Core ──
+
+def _generate_research_questions(review_rows: list[dict]) -> list[str]:
+    """基于 failure risk、stability 和 transitions 自动生成研究问题。"""
+    questions = []
+    if not review_rows or len(review_rows) < 4:
+        return questions
+
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    regime = classify_market_regime(review_rows)
+
+    # 基于高风险策略
+    hr = failure_risk.get("high_risk_strategies", [])
+    for s in hr:
+        questions.append(f"Why does {s} fail in current {regime} regime?")
+    if not hr:
+        # 基于最低稳定性策略
+        strategy_stability = stability.get("strategy_stability", {})
+        if strategy_stability:
+            least_stable = min(strategy_stability, key=lambda k: strategy_stability[k]["stability_score"])
+            questions.append(f"Which strategies remain stable across all regimes?")
+            questions.append(f"How does {least_stable} behave under transition?")
+
+    # 基于 transition
+    if transition.get("is_transitioning"):
+        questions.append(f"How to adapt strategy allocation during {transition['current_regime']} transition?")
+
+    # 通用问题
+    if not questions:
+        questions.append("Which strategies are best suited for current market regime?")
+        questions.append("How can portfolio diversification be improved?")
+
+    return questions[:5]
+
+
+def _build_analysis_chain(question: str, review_rows: list[dict]) -> dict:
+    """为单个 research question 构建分析链（matrix + stability + failure + conclusion）。"""
+    steps = []
+    evidence = []
+
+    matrix = build_strategy_regime_matrix(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    regime = classify_market_regime(review_rows)
+
+    q_lower = question.lower()
+
+    # Step 1: Check matrix evidence
+    has_matrix_evidence = False
+    for rg, strategies in matrix.items():
+        for st, stats in strategies.items():
+            if stats.get("win_rate") is not None and stats["count"] > 0:
+                if st in q_lower or rg in q_lower:
+                    evidence.append(f"{st} in {rg}: win_rate {stats['win_rate']}% (n={stats['count']})")
+                    has_matrix_evidence = True
+    if not has_matrix_evidence:
+        for rg, strategies in list(matrix.items())[:1]:
+            for st, stats in strategies.items():
+                if stats.get("win_rate") is not None:
+                    evidence.append(f"{st} in {rg}: win_rate {stats['win_rate']}%")
+                    break
+    steps.append("check strategy × regime matrix")
+
+    # Step 2: Check stability evidence
+    has_stability_evidence = False
+    for st, data in stability.get("strategy_stability", {}).items():
+        if st in q_lower:
+            evidence.append(f"{st} stability_score: {data['stability_score']}, variance: {data['regime_variance']}")
+            has_stability_evidence = True
+    if not has_stability_evidence and stability.get("strategy_stability"):
+        # pick the most and least stable
+        strategy_data = stability["strategy_stability"]
+        most = max(strategy_data, key=lambda k: strategy_data[k]["stability_score"])
+        least = min(strategy_data, key=lambda k: strategy_data[k]["stability_score"])
+        evidence.append(f"most stable: {most} (score={strategy_data[most]['stability_score']}), least stable: {least} (score={strategy_data[least]['stability_score']})")
+    steps.append("check stability score")
+
+    # Step 3: Check failure evidence
+    hr = failure_risk.get("high_risk_strategies", [])
+    has_failure_evidence = False
+    for st, data in failure_risk.get("strategy_failure_risk", {}).items():
+        if st in q_lower:
+            evidence.append(f"{st} risk_score: {data['risk_score']}, degradation: {data['degradation']}")
+            has_failure_evidence = True
+    if not has_failure_evidence:
+        if hr:
+            evidence.append(f"high risk strategies: {', '.join(hr)}")
+        elif failure_risk.get("strategy_failure_risk"):
+            stables = failure_risk.get("stable_strategies", [])
+            if stables:
+                evidence.append(f"stable strategies: {', '.join(stables)}")
+    steps.append("check failure risk trends")
+
+    # Step 4: Transition evidence
+    if transition.get("is_transitioning"):
+        evidence.append(f"regime transitioning: {transition['current_regime']} (strength={transition['transition_strength']})")
+        steps.append("check regime transition context")
+
+    # Conclusion synthesis
+    conclusion = None
+    if "fail" in q_lower and hr:
+        conclusion = f"{', '.join(hr)} is regime-sensitive in {regime}"
+    elif "stable across all regimes" in q_lower and stability.get("strategy_stability"):
+        strategy_data = stability["strategy_stability"]
+        best = max(strategy_data, key=lambda k: strategy_data[k]["stability_score"])
+        conclusion = f"{best} is most stable across regimes (score={strategy_data[best]['stability_score']})"
+    elif "transition" in q_lower:
+        conclusion = f"Strategy allocation should adapt to {transition.get('current_regime', 'unknown')} transition"
+    elif "diversification" in q_lower:
+        conclusion = "Diversify across strategies with complementary regime profiles"
+    else:
+        conclusion = f"Strategy performance is dominated by {regime} regime conditions"
+
+    return {
+        "question": question,
+        "steps": steps,
+        "evidence": evidence[:8],
+        "conclusion": conclusion,
+    }
+
+
+def run_research_agent_core(review_rows: list[dict]) -> dict:
+    """Research Agent Core：自动研究问题、分析链、最终报告（只读、规则驱动）。
+
+    基于 v30–v38 输出自动构建多层次研究分析。
+    """
+    result = {"research_questions": [], "analysis_chains": [], "final_report": {"summary": [], "recommendations": []}, "confidence": 0.0}
+    if not review_rows or len(review_rows) < 4:
+        return result
+
+    # 生成研究问题
+    questions = _generate_research_questions(review_rows)
+    result["research_questions"] = questions
+
+    # 为每个问题构建分析链
+    chains = []
+    for q in questions:
+        chain = _build_analysis_chain(q, review_rows)
+        chains.append(chain)
+    result["analysis_chains"] = chains
+
+    # 合成 final report
+    conclusions = set()
+    recommendations = set()
+    for c in chains:
+        if c.get("conclusion"):
+            conclusions.add(c["conclusion"])
+        # 从 evidence 提炼 recommendation
+        for e in c.get("evidence", []):
+            if "fail" in e.lower() or "risk" in e.lower():
+                st_name = e.split(" ")[0]
+                recommendations.add(f"Reduce {st_name} exposure in non-ideal regimes")
+            if "stable" in e.lower() and "score=" in e:
+                parts = e.split(":")
+                st_name = parts[0].replace("most stable: ", "").replace("least stable: ", "").strip()
+                if "most stable" in e:
+                    recommendations.add(f"Increase {st_name} allocation for portfolio stability")
+
+    if not recommendations:
+        # 通用建议
+        recommendations.add("Monitor regime transitions for strategy rebalancing")
+        recommendations.add("Diversify across strategy types")
+
+    result["final_report"] = {
+        "summary": list(conclusions)[:5] if conclusions else ["Insufficient data for summary"],
+        "recommendations": list(recommendations)[:5],
+    }
+
+    # Confidence
+    n_questions = len(questions)
+    n_chains = len(chains)
+    data_confidence = min(len(review_rows) / 12, 1.0)
+    chain_confidence = min(n_chains / 3, 1.0)
+    question_confidence = min(n_questions / 3, 1.0)
+    result["confidence"] = round((data_confidence * 0.3 + chain_confidence * 0.4 + question_confidence * 0.3), 2)
+
+    return result
+
+
+def build_research_agent_report(review_rows: list[dict]) -> dict:
+    """Research Agent 摘要报告（只读）。"""
+    core = run_research_agent_core(review_rows)
+    fr = core.get("final_report", {})
+    return {
+        "core_findings": fr.get("summary", ["Insufficient data for findings"]),
+        "actionable_recommendations": fr.get("recommendations", ["Continue monitoring"]),
+        "system_confidence": core["confidence"],
+    }
+
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
