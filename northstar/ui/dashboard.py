@@ -311,7 +311,7 @@ def run() -> None:
     )
 
     try:
-        from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct, classify_recommendation_review_result
+        from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct, classify_recommendation_review_result, classify_recommendation_failure_reason
         from northstar.data.recommendation_store import update_recommendation_review, get_all_recommendations
 
         try:
@@ -476,6 +476,36 @@ def run() -> None:
                         f'<div class="cd" style="color:#B45309;font-size:11px;">复盘质量解释异常: {exc}</div>',
                         unsafe_allow_html=True,
                     )
+
+                # ── v19: 失效原因分布 ──
+                try:
+                    failure_stats = {"买入后下跌": 0, "卖出后上涨": 0, "动作类型无法识别": 0, "数据不足导致无法判断": 0, "其他失效原因": 0}
+                    severity_counts = {"高": 0, "中": 0, "低": 0}
+                    for fr in filtered:
+                        fr_result = classify_recommendation_failure_reason(fr)
+                        reason = fr_result.get("failure_reason", "")
+                        sev = fr_result.get("failure_severity", "")
+                        if reason in failure_stats:
+                            failure_stats[reason] += 1
+                        if sev in severity_counts:
+                            severity_counts[sev] += 1
+
+                    total_failures = sum(failure_stats.values())
+                    if total_failures > 0:
+                        st.markdown('<div class="mt" style="margin-top:16px;">🔍 失效原因分布</div>', unsafe_allow_html=True)
+                        fc1, fc2, fc3, fc4, fc5 = st.columns(5)
+                        fc1.metric("📉 买入后下跌", failure_stats.get("买入后下跌", 0))
+                        fc2.metric("📈 卖出后上涨", failure_stats.get("卖出后上涨", 0))
+                        fc3.metric("⚠️ 动作无法识别", failure_stats.get("动作类型无法识别", 0))
+                        fc4.metric("📋 数据不足", failure_stats.get("数据不足导致无法判断", 0))
+                        fc5.metric("❓ 其他", failure_stats.get("其他失效原因", 0))
+                        sc1, sc2, sc3 = st.columns(3)
+                        sc1.metric("🔴 高严重程度", severity_counts.get("高", 0))
+                        sc2.metric("🟡 中严重程度", severity_counts.get("中", 0))
+                        sc3.metric("🟢 低严重程度", severity_counts.get("低", 0))
+                        st.caption("仅用于历史复盘验证，不构成投资建议。")
+                except Exception:
+                    pass
 
                 # ── 每条记录展示（含分级） ──
                 for r in filtered:

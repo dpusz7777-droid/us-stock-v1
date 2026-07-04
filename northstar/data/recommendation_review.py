@@ -1579,6 +1579,153 @@ def calculate_review_stats(recommendations: list[dict]) -> dict:
     }
 
 
+def classify_recommendation_failure_reason(row: dict) -> dict:
+    """对一条建议复盘结果进行只读失效原因归类。
+
+    参数：
+        row: review_recommendations 返回的单条复盘记录
+
+    返回：
+        {
+            "failure_reason": str,       失效原因分类
+            "failure_reason_detail": str, 一句话解释
+            "failure_severity": str,      高 / 中 / 低 / 无
+            "failure_flags": list[str],   标签列表
+        }
+
+    规则（简单透明，不依赖 AI 模型）：
+        - 非失效建议：failure_reason=非失效建议, severity=无
+        - 缺失关键字段：数据不足导致无法判断, severity=低
+        - 买入类建议后下跌：买入后下跌, severity 按跌幅分级
+        - 卖出类建议后上涨：卖出后上涨, severity 按涨幅分级
+        - 无法识别动作类型：动作类型无法识别, severity=低
+
+    安全原则：
+        - 只读计算，不写回任何文件
+        - 字段缺失时不会崩溃
+        - 不构成投资建议
+    """
+    try:
+        # 检查是否是失效建议
+        grade = row.get("review_grade", "")
+        if grade and grade != "失效":
+            return {
+                "failure_reason": "非失效建议",
+                "failure_reason_detail": "该建议不属于失效分级，无需分析失效原因。",
+                "failure_severity": "无",
+                "failure_flags": [],
+            }
+
+        # 检查必要字段
+        action = row.get("action", "").strip() if row.get("action") else ""
+        symbol = row.get("symbol", "").strip() if row.get("symbol") else ""
+        entry_price = row.get("price")
+        current_price = row.get("current_price")
+        raw_change_pct = row.get("change_pct")
+
+        if not action or not symbol:
+            return {
+                "failure_reason": "数据不足导致无法判断",
+                "failure_reason_detail": "缺少建议动作或股票代码，无法归类失效原因。",
+                "failure_severity": "低",
+                "failure_flags": ["缺少建议动作", "缺少股票代码"],
+            }
+
+        if entry_price is None or entry_price == 0:
+            return {
+                "failure_reason": "数据不足导致无法判断",
+                "failure_reason_detail": "缺少建议价格，无法判断失效原因。",
+                "failure_severity": "低",
+                "failure_flags": ["缺少建议价格"],
+            }
+
+        if current_price is None:
+            return {
+                "failure_reason": "数据不足导致无法判断",
+                "failure_reason_detail": "缺少当前价格，无法判断失效原因。",
+                "failure_severity": "低",
+                "failure_flags": ["缺少当前价格"],
+            }
+
+        if raw_change_pct is None:
+            return {
+                "failure_reason": "数据不足导致无法判断",
+                "failure_reason_detail": "缺少涨跌幅，无法判断失效原因。",
+                "failure_severity": "低",
+                "failure_flags": ["缺少涨跌幅"],
+            }
+
+        try:
+            cp = float(raw_change_pct)
+        except (TypeError, ValueError):
+            return {
+                "failure_reason": "数据不足导致无法判断",
+                "failure_reason_detail": "涨跌幅格式异常，无法判断失效原因。",
+                "failure_severity": "低",
+                "failure_flags": ["涨跌幅格式异常"],
+            }
+
+        # 识别动作类型
+        action_lower = action.lower()
+        is_buy = action_lower in ("买入", "加仓", "补仓", "看多", "做多", "buy", "add", "accumulate", "bullish", "watch_buy", "strong_buy") or action in ("买入", "加仓", "补仓", "看多", "做多")
+        is_sell = action_lower in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空", "sell", "reduce", "exit", "bearish", "avoid") or action in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空")
+
+        # 买入类建议失效：上涨没赚到是因为没买，但这里只关心"买入后下跌"
+        if is_buy:
+            # 失效：买入后下跌
+            if cp <= -3:
+                if cp <= -10:
+                    severity = "高"
+                    detail = f"买入类建议后价格下跌 {cp:.1f}%，跌幅较大，需重点复盘买入时机和方向判断。"
+                elif cp <= -5:
+                    severity = "中"
+                    detail = f"买入类建议后价格下跌 {cp:.1f}%，说明买入时机或方向需要复盘。"
+                else:
+                    severity = "低"
+                    detail = f"买入类建议后价格小幅下跌 {cp:.1f}%，可继续观察或复盘买入逻辑。"
+                return {
+                    "failure_reason": "买入后下跌",
+                    "failure_reason_detail": detail,
+                    "failure_severity": severity,
+                    "failure_flags": [f"跌幅{abs(cp):.0f}%", f"严重程度{severity}"],
+                }
+
+        if is_sell:
+            # 失效：卖出后上涨
+            if cp >= 3:
+                if cp >= 10:
+                    severity = "高"
+                    detail = f"卖出/回避类建议后价格上涨 {cp:.1f}%，涨幅较大，可能错过重要上涨行情。"
+                elif cp >= 5:
+                    severity = "中"
+                    detail = f"卖出/回避类建议后价格上涨 {cp:.1f}%，说明卖出判断偏保守。"
+                else:
+                    severity = "低"
+                    detail = f"卖出/回避类建议后价格小幅上涨 {cp:.1f}%，可继续观察或复盘卖出逻辑。"
+                return {
+                    "failure_reason": "卖出后上涨",
+                    "failure_reason_detail": detail,
+                    "failure_severity": severity,
+                    "failure_flags": [f"涨幅{cp:.0f}%", f"严重程度{severity}"],
+                }
+
+        # 动作类型无法识别
+        return {
+            "failure_reason": "动作类型无法识别",
+            "failure_reason_detail": f"建议动作为「{action}」，无法归类到买入或卖出类，无法判断失效原因。",
+            "failure_severity": "低",
+            "failure_flags": ["动作类型无法识别"],
+        }
+
+    except Exception:
+        return {
+            "failure_reason": "其他失效原因",
+            "failure_reason_detail": "分析失效原因时出现异常，请确认数据格式。",
+            "failure_severity": "中",
+            "failure_flags": ["分析异常"],
+        }
+
+
 def build_recommendation_review_quality_explanation(review_rows: list[dict]) -> dict:
     """对当前建议复盘结果进行只读质量解释。
 
