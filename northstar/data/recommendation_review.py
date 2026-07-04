@@ -448,13 +448,236 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
             "latest_status": g["latest_status_raw"],
         })
 
-    # Default sort: total_count desc, then latest_date desc
-    result_rows.sort(key=lambda x: (-x["total_count"], x.get("latest_date") or ""), reverse=False)
-    # Re-sort properly
-    result_rows.sort(key=lambda x: (-x["total_count"], -(ord(x.get("latest_date") or "z") if x.get("latest_date") else 0)))
-    # Simpler: just sort by total_count desc, then symbol
     result_rows.sort(key=lambda x: (-x["total_count"], x["symbol"]))
+    return result_rows
 
+
+# ── 按建议动作判断胜负 ───────────────────────────────────────────────
+
+
+def infer_recommendation_action(record: dict) -> str:
+    """从建议记录中识别建议动作，归一化为标准分类。
+
+    返回：
+        BUY / SELL / HOLD / WATCH / UNKNOWN
+    """
+    # 兼容多种字段名
+    raw_action = None
+    for key in ("action", "recommendation", "recommendation_type", "suggestion", "decision", "signal", "advice", "type"):
+        val = record.get(key)
+        if val is not None and isinstance(val, str) and val.strip():
+            raw_action = val.strip()
+            break
+
+    if raw_action is None:
+        return "UNKNOWN"
+
+    raw_lower = raw_action.lower()
+
+    # BUY
+    buy_keywords = {"买入", "加仓", "补仓", "看多", "buy", "add", "accumulate", "bullish", "做多"}
+    if raw_lower in buy_keywords or raw_action in ("买入", "加仓", "补仓", "看多", "做多"):
+        return "BUY"
+
+    # SELL
+    sell_keywords = {"卖出", "减仓", "清仓", "止盈", "止损", "看空", "sell", "reduce", "exit", "bearish", "做空"}
+    if raw_lower in sell_keywords or raw_action in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空"):
+        return "SELL"
+
+    # HOLD
+    hold_keywords = {"持有", "继续持有", "hold", "holding", "hold"}
+    if raw_lower in hold_keywords or raw_action in ("持有", "继续持有"):
+        return "HOLD"
+
+    # WATCH
+    watch_keywords = {"观察", "观望", "等待", "watch", "wait", "observe"}
+    if raw_lower in watch_keywords or raw_action in ("观察", "观望", "等待"):
+        return "WATCH"
+
+    return "UNKNOWN"
+
+
+def evaluate_recommendation_outcome(record: dict) -> dict:
+    """根据建议动作和涨跌幅判断复盘结果。
+
+    返回：
+        {
+            "action_group": str,        BUY / SELL / HOLD / WATCH / UNKNOWN
+            "raw_change_pct": float|None,
+            "normalized_change_pct": float|None,
+            "outcome": str              win / loss / flat / neutral / unknown
+        }
+    """
+    action_group = infer_recommendation_action(record)
+
+    # 从 review_result 中获取 change_pct
+    review_result = record.get("review_result")
+    raw_change_pct: float | None = None
+
+    if isinstance(review_result, dict):
+        cp = review_result.get("change_pct")
+        if cp is not None:
+            try:
+                raw_change_pct = float(cp)
+            except (TypeError, ValueError):
+                pass
+
+    if raw_change_pct is None:
+        return {
+            "action_group": action_group,
+            "raw_change_pct": None,
+            "normalized_change_pct": None,
+            "outcome": "unknown",
+        }
+
+    if action_group == "BUY":
+        if raw_change_pct > 0:
+            return {"action_group": "BUY", "raw_change_pct": raw_change_pct, "normalized_change_pct": raw_change_pct, "outcome": "win"}
+        elif raw_change_pct < 0:
+            return {"action_group": "BUY", "raw_change_pct": raw_change_pct, "normalized_change_pct": raw_change_pct, "outcome": "loss"}
+        else:
+            return {"action_group": "BUY", "raw_change_pct": raw_change_pct, "normalized_change_pct": raw_change_pct, "outcome": "flat"}
+
+    elif action_group == "SELL":
+        if raw_change_pct < 0:
+            return {"action_group": "SELL", "raw_change_pct": raw_change_pct, "normalized_change_pct": -raw_change_pct, "outcome": "win"}
+        elif raw_change_pct > 0:
+            return {"action_group": "SELL", "raw_change_pct": raw_change_pct, "normalized_change_pct": -raw_change_pct, "outcome": "loss"}
+        else:
+            return {"action_group": "SELL", "raw_change_pct": raw_change_pct, "normalized_change_pct": -raw_change_pct, "outcome": "flat"}
+
+    elif action_group in ("HOLD", "WATCH"):
+        return {"action_group": action_group, "raw_change_pct": raw_change_pct, "normalized_change_pct": None, "outcome": "neutral"}
+
+    else:  # UNKNOWN
+        return {"action_group": "UNKNOWN", "raw_change_pct": raw_change_pct, "normalized_change_pct": None, "outcome": "unknown"}
+
+
+def get_recommendation_action_stats(recommendations: list[dict]) -> list[dict]:
+    """按建议动作分组统计。
+
+    参数：
+        recommendations: 完整建议记录列表
+
+    返回：
+        list[dict]，每个元素：
+            action_group: str           BUY / SELL / HOLD / WATCH / UNKNOWN
+            action_display: str         展示用名称
+            total_count: int
+            reviewed_count: int
+            pending_count: int
+            win_count: int
+            loss_count: int
+            flat_count: int
+            neutral_count: int
+            unknown_count: int
+            win_rate: float|None
+            avg_raw_change_pct: float|None
+            avg_normalized_change_pct: float|None
+            best_normalized_change_pct: float|None
+            worst_normalized_change_pct: float|None
+    """
+    from collections import defaultdict
+
+    groups: dict[str, dict] = defaultdict(lambda: {
+        "total_count": 0,
+        "reviewed_count": 0,
+        "pending_count": 0,
+        "win_count": 0,
+        "loss_count": 0,
+        "flat_count": 0,
+        "neutral_count": 0,
+        "unknown_count": 0,
+        "raw_change_pcts": [],
+        "normalized_change_pcts": [],
+    })
+
+    for rec in recommendations:
+        status = rec.get("status", "open")
+        action_group = infer_recommendation_action(rec)
+        g = groups[action_group]
+        g["total_count"] += 1
+
+        if status != "reviewed":
+            g["pending_count"] += 1
+            continue
+
+        g["reviewed_count"] += 1
+        outcome = evaluate_recommendation_outcome(rec)
+        o = outcome["outcome"]
+
+        if o == "win":
+            g["win_count"] += 1
+        elif o == "loss":
+            g["loss_count"] += 1
+        elif o == "flat":
+            g["flat_count"] += 1
+        elif o == "neutral":
+            g["neutral_count"] += 1
+        else:
+            g["unknown_count"] += 1
+
+        if outcome["raw_change_pct"] is not None:
+            g["raw_change_pcts"].append(outcome["raw_change_pct"])
+        if outcome["normalized_change_pct"] is not None:
+            g["normalized_change_pcts"].append(outcome["normalized_change_pct"])
+
+    ACTION_DISPLAY = {
+        "BUY": "买入/看多",
+        "SELL": "卖出/看空",
+        "HOLD": "持有",
+        "WATCH": "观望",
+        "UNKNOWN": "未知",
+    }
+
+    result_rows = []
+    order = ["BUY", "SELL", "HOLD", "WATCH", "UNKNOWN"]
+    for ag in order:
+        g = groups.get(ag)
+        if g is None:
+            continue
+
+        # Win rate denominator: win_count + loss_count + flat_count
+        denom = g["win_count"] + g["loss_count"] + g["flat_count"]
+        win_rate: float | None = None
+        if denom > 0:
+            win_rate = round(g["win_count"] / denom * 100, 2)
+
+        # Average raw change_pct
+        avg_raw: float | None = None
+        if g["raw_change_pcts"]:
+            avg_raw = round(sum(g["raw_change_pcts"]) / len(g["raw_change_pcts"]), 2)
+
+        # Average normalized change_pct
+        avg_norm: float | None = None
+        best_norm: float | None = None
+        worst_norm: float | None = None
+        if g["normalized_change_pcts"]:
+            vals = g["normalized_change_pcts"]
+            avg_norm = round(sum(vals) / len(vals), 2)
+            best_norm = round(max(vals), 2)
+            worst_norm = round(min(vals), 2)
+
+        result_rows.append({
+            "action_group": ag,
+            "action_display": ACTION_DISPLAY.get(ag, ag),
+            "total_count": g["total_count"],
+            "reviewed_count": g["reviewed_count"],
+            "pending_count": g["pending_count"],
+            "win_count": g["win_count"],
+            "loss_count": g["loss_count"],
+            "flat_count": g["flat_count"],
+            "neutral_count": g["neutral_count"],
+            "unknown_count": g["unknown_count"],
+            "win_rate": win_rate,
+            "avg_raw_change_pct": avg_raw,
+            "avg_normalized_change_pct": avg_norm,
+            "best_normalized_change_pct": best_norm,
+            "worst_normalized_change_pct": worst_norm,
+        })
+
+    # Sort: total_count desc
+    result_rows.sort(key=lambda x: -x["total_count"])
     return result_rows
 
 
