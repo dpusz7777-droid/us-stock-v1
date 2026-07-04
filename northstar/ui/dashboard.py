@@ -276,6 +276,97 @@ def run() -> None:
             unsafe_allow_html=True,
         )
 
+    # ── 建议复盘 ─────────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">📋 建议复盘</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct
+
+        try:
+            from northstar.data.recommendation_store import list_recommendations as _list_recs
+            recs_for_review = _list_recs(limit=20)
+        except Exception:
+            recs_for_review = []
+
+        if not recs_for_review:
+            st.markdown(
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无可复盘建议</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            review_data = review_recommendations(recs_for_review)
+
+            for r in review_data:
+                act = r.get("action", "—")
+                act_color = {
+                    "买入": "sbuy", "卖出": "ssell", "持有": "shold",
+                    "观察": "shold", "风险提示": "ssell",
+                }.get(act, "shold")
+                symbol = r.get("symbol", "?")
+                entry_price = r.get("price")
+                entry_price_str = f"${entry_price:.2f}" if entry_price else "—"
+                current_price = r.get("current_price")
+                current_price_str = f"${current_price:.2f}" if current_price else "—"
+                change_pct = r.get("change_pct")
+                change_pct_str = format_change_pct(change_pct) if current_price else "N/A"
+                change_pct_color = "gn" if change_pct and change_pct > 0 else ("rd" if change_pct and change_pct < 0 else "")
+                days_since = r.get("days_since")
+                days_str = f"{days_since}天" if days_since is not None else "—"
+                due = r.get("due_for_review", False)
+                due_tag = "🔔 已到期" if due else "⏳ 未到期"
+                status = r.get("review_status", "无法计算")
+                ts = r.get("created_at", "")[-8:] if r.get("created_at") else ""
+
+                # 根据 review_status 定制显示
+                change_value = r.get("change")
+                change_str = format_change(change_value)
+
+                if status in ("缺少建议价格，无法计算收益率", "请使用英文股票代码，例如 NVDA"):
+                    # 非标准场景：单行显示提示
+                    st.markdown(
+                        f'<div class="sg">'
+                        f'<span class="sb {act_color}">{act}</span>'
+                        f'<span class="stk">{symbol}</span>'
+                        f'<span class="srs" style="color:#B45309;">⚠️ {status}</span>'
+                        f'<span class="fts">{ts}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                elif status in ("价格获取失败", "暂无当前价格", "无法计算"):
+                    st.markdown(
+                        f'<div class="sg">'
+                        f'<span class="sb {act_color}">{act}</span>'
+                        f'<span class="stk">{symbol}</span>'
+                        f'<span class="srs">建议价 {entry_price_str} · 当前价 {current_price_str} · 涨跌 {change_str} · {status}</span>'
+                        f'<span class="fts">{ts}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    # 正常计算场景
+                    change_color = "gn" if change_value and change_value > 0 else ("rd" if change_value and change_value < 0 else "")
+                    st.markdown(
+                        f'<div class="sg">'
+                        f'<span class="sb {act_color}">{act}</span>'
+                        f'<span class="stk">{symbol}</span>'
+                        f'<span class="srs">建议价 {entry_price_str} → 当前 {current_price_str} · '
+                        f'涨跌 <span class="{change_color}">{change_str}</span> · '
+                        f'<span class="{change_pct_color}">{change_pct_str}</span> · {days_str} · {due_tag} · {status}</span>'
+                        f'<span class="fts">{ts}</span>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+    except ImportError as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#DC2626;font-size:11px;">建议复盘模块未加载: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#B45309;font-size:11px;">建议复盘异常: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown('<div class="ftr">北极星 · 仅用于研究参考 · 不构成投资建议</div>', unsafe_allow_html=True)
 
 
