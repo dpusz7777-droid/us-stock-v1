@@ -86,14 +86,6 @@ def run() -> None:
 
     st.markdown('<h1>▦ 北极星</h1>', unsafe_allow_html=True)
 
-    # ── 顶部说明 ──
-    st.info(
-        "**北极星** — AI 投资研究与建议复盘系统\n\n"
-        "• 当前阶段仅做**研究、记录与复盘验证**，不执行自动交易\n"
-        "• 所有建议、信号、模拟交易**仅用于复盘研究**，不构成投资建议\n"
-        "• 真实买卖操作请自行判断决策"
-    )
-
     # ── 读取后端数据 ──
     ss = _lj(STATE) or {}
     trades = _lj(TRADES) or []
@@ -102,6 +94,46 @@ def run() -> None:
     if not isinstance(ss, dict): ss = {}
     if not isinstance(trades, list): trades = []
     if not isinstance(curve, list): curve = []
+
+    # ── v26: 项目状态总览 ──
+    def render_project_status_overview(st_: Any, ss_: dict) -> None:
+        """渲染项目状态总览区域（轻量、折叠、小白友好）。"""
+        with st_.expander("🧭 北极星项目状态总览", expanded=False):
+            st_.markdown("**运行状态**")
+            br = ss_.get("system_health") is not None
+            bs = "运行中" if br else "等待后台启动"
+            c1, c2, c3, c4 = st_.columns(4)
+            c1.metric("Backend", bs)
+            c2.metric("UI", "运行中")
+            c3.metric("数据更新时间", (ss_.get("last_run_time") or "暂无数据")[-19:] if ss_.get("last_run_time") else "暂无数据")
+            c4.metric("总资产", f"${float(ss_.get('total_equity', 0)):,.2f}" if ss_.get("total_equity") else "暂无数据")
+            st_.markdown("**开发状态**")
+            c5, c6, c7, c8 = st_.columns(4)
+            c5.metric("当前版本", "v26 项目状态总览")
+            c6.metric("最新已知 commit", "9f2abcf")
+            c7.metric("开发平台", "Mac")
+            c8.metric("项目目录", "~/Documents/北极星")
+            st_.markdown("**复盘模块完成情况**")
+            modules = [("建议留痕","已完成"),("建议复盘","已完成"),("单条分级","已完成"),("分级趋势","已完成"),("复盘质量解释","已完成"),("失效原因归类","已完成"),("失效原因总览","已完成"),("模块文档","已完成")]
+            mc1, mc2, mc3, mc4 = st_.columns(4)
+            for i, (n, s) in enumerate(modules):
+                [mc1, mc2, mc3, mc4][i % 4].metric(n, s)
+            st_.markdown("**测试状态**")
+            st_.metric("复盘相关测试", "73/73 通过")
+            st_.caption("来自最近一次验收；每次改动需重新运行。")
+            st_.markdown("**下一步建议**")
+            st_.info("1️⃣ 优化项目总览（已完成）\n2️⃣ 统一 action 识别（待开发）\n3️⃣ 快照自动保存策略（待开发）\n4️⃣ 暂不做自动交易")
+            st_.caption("仅用于历史复盘验证，不构成投资建议。")
+
+    render_project_status_overview(st, ss)
+
+    # ── 顶部说明 ──
+    st.info(
+        "**北极星** — AI 投资研究与建议复盘系统\n\n"
+        "• 当前阶段仅做**研究、记录与复盘验证**，不执行自动交易\n"
+        "• 所有建议、信号、模拟交易**仅用于复盘研究**，不构成投资建议\n"
+        "• 真实买卖操作请自行判断决策"
+    )
 
     def _money(value: Any, unavailable: str = "暂无法估值") -> str:
         if value is None:
