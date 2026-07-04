@@ -95,9 +95,53 @@ def run() -> None:
     if not isinstance(trades, list): trades = []
     if not isinstance(curve, list): curve = []
 
+    # ── v27: 自动读取 Git 信息 ──
+    def get_git_commit_info(project_root: str | Path) -> dict:
+        """只读获取当前 Git 仓库的 commit 信息。
+
+        返回：
+            {"commit": str, "message": str, "is_clean": bool, "error": str | None}
+        """
+        import subprocess
+        import os
+        result = {"commit": "暂无数据", "message": "暂无数据", "is_clean": None, "error": None}
+        git_dir = Path(project_root) / ".git"
+        if not git_dir.exists():
+            result["error"] = "非 Git 仓库"
+            return result
+        try:
+            r1 = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=2, cwd=project_root)
+            if r1.returncode == 0:
+                result["commit"] = r1.stdout.strip()
+            else:
+                result["error"] = "git rev-parse 失败"
+        except FileNotFoundError:
+            result["error"] = "git 命令不存在"
+            return result
+        except subprocess.TimeoutExpired:
+            result["error"] = "读取超时"
+            return result
+        except Exception as e:
+            result["error"] = f"读取异常: {type(e).__name__}"
+            return result
+        try:
+            r2 = subprocess.run(["git", "log", "-1", "--pretty=%s"], capture_output=True, text=True, timeout=2, cwd=project_root)
+            if r2.returncode == 0:
+                result["message"] = r2.stdout.strip()
+        except Exception:
+            pass
+        try:
+            r3 = subprocess.run(["git", "status", "--short"], capture_output=True, text=True, timeout=2, cwd=project_root)
+            result["is_clean"] = (r3.returncode == 0 and not r3.stdout.strip())
+        except Exception:
+            pass
+        return result
+
     # ── v26: 项目状态总览 ──
     def render_project_status_overview(st_: Any, ss_: dict) -> None:
         """渲染项目状态总览区域（轻量、折叠、小白友好）。"""
+        git_info = get_git_commit_info(PROJECT_ROOT)
+        git_status_text = "clean" if git_info.get("is_clean") else ("有未提交改动" if git_info.get("is_clean") is False else git_info.get("error", "暂无数据"))
         with st_.expander("🧭 北极星项目状态总览", expanded=False):
             st_.markdown("**运行状态**")
             br = ss_.get("system_health") is not None
@@ -109,8 +153,8 @@ def run() -> None:
             c4.metric("总资产", f"${float(ss_.get('total_equity', 0)):,.2f}" if ss_.get("total_equity") else "暂无数据")
             st_.markdown("**开发状态**")
             c5, c6, c7, c8 = st_.columns(4)
-            c5.metric("当前版本", "v26 项目状态总览")
-            c6.metric("最新已知 commit", "9f2abcf")
+            c5.metric("当前版本", "v27 自动读取 Git")
+            c6.metric("最新 commit", git_info.get("commit", "暂无数据"))
             c7.metric("开发平台", "Mac")
             c8.metric("项目目录", "~/Documents/北极星")
             st_.markdown("**复盘模块完成情况**")
