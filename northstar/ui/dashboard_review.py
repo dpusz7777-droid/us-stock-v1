@@ -483,6 +483,34 @@ def render_recommendation_review_section(
     except Exception:
         st.markdown('<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">至少需要 2 条包含失效原因统计的快照后才能观察失效原因趋势。</div>', unsafe_allow_html=True)
 
+    # ── v37: Autonomous Strategy Research Loop ──
+    try:
+        from northstar.data.recommendation_review import build_research_report
+        ar_recs = get_all_recommendations_fn()
+        if ar_recs:
+            ar = build_research_report(ar_recs)
+            with st.expander("🔬 Autonomous Research Insights", expanded=False):
+                st.caption("**自动研究洞察**：基于策略 × 市场状态矩阵、稳定性、失效风险的规则驱动研究。")
+                kf = ar.get("key_findings", [])
+                if kf:
+                    st.markdown("**Key Findings**")
+                    for f in kf:
+                        st.markdown(f"- {f}")
+                else:
+                    st.caption("暂无研究发现（样本不足）。")
+                ai = ar.get("actionable_insights", [])
+                if ai:
+                    st.markdown("**Actionable Insights**")
+                    for a in ai:
+                        st.markdown(f"- {a}")
+                conf = ar.get("confidence", 0)
+                st.metric("Research Confidence", f"{conf:.0%}")
+                st.caption("自动研究仅基于已有历史数据，不构成投资建议。")
+        else:
+            pass
+    except Exception:
+        pass
+
     # ── v36: Portfolio Intelligence Layer ──
     try:
         from northstar.data.recommendation_review import build_portfolio_intelligence_summary, build_portfolio_rebalance_insight

@@ -945,6 +945,182 @@ def build_portfolio_rebalance_insight(review_rows: list[dict]) -> dict:
     action = "rebalance" if adjustments else "maintain"
     return {"action": action, "top_adjustments": adjustments[:5]}
 
+
+# ── v37: Autonomous Strategy Research Loop ──
+
+def run_autonomous_strategy_research(review_rows: list[dict]) -> dict:
+    """自动生成研究假设、结论和行动建议（只读、规则驱动）。
+
+    基于 strategy × regime matrix、stability、failure risk 和 transition 数据，
+    自动发现规律并生成可操作的研究洞察。
+    """
+    result = {"insights": [], "generated_conclusions": [], "recommended_focus": [], "confidence": 0.0}
+    if not review_rows or len(review_rows) < 4:
+        return result
+
+    matrix = build_strategy_regime_matrix(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    regime = classify_market_regime(review_rows)
+
+    insights = []
+    total_possible = 0
+    evidence_hits = 0
+
+    # ── Hypothesis 1: momentum + high_volatility + low win_rate → regime sensitivity ──
+    total_possible += 1
+    h1_evidence = []
+    for rg, strategies in matrix.items():
+        m_data = strategies.get("momentum", {})
+        if m_data.get("win_rate") is not None and m_data["count"] > 0:
+            if rg in ("high_volatility", "bear") and m_data["win_rate"] < 50:
+                h1_evidence.append(f"momentum in {rg}: win_rate {m_data['win_rate']}%")
+                evidence_hits += 1
+                break
+    if not h1_evidence:
+        risk_m = failure_risk.get("strategy_failure_risk", {}).get("momentum", {})
+        if risk_m.get("risk_score", 0) >= 0.3:
+            h1_evidence.append(f"momentum failure risk elevated: {risk_m['risk_score']}")
+            evidence_hits += 1
+    if h1_evidence:
+        insights.append({
+            "hypothesis": "momentum performs poorly in high volatility",
+            "support": round(min(evidence_hits / max(total_possible, 1), 1.0), 2),
+            "evidence": h1_evidence,
+        })
+
+    # ── Hypothesis 2: defensive + high stability → robustness ──
+    total_possible += 1
+    h2_evidence = []
+    stable = stability.get("strategy_stability", {})
+    def_data = stable.get("defensive", {})
+    if def_data.get("stability_score") is not None and def_data["stability_score"] > 50:
+        h2_evidence.append(f"defensive stability_score: {def_data['stability_score']}")
+        evidence_hits += 1
+    for rg, strategies in matrix.items():
+        d_data = strategies.get("defensive", {})
+        if d_data.get("win_rate") is not None and d_data["count"] > 0:
+            h2_evidence.append(f"defensive in {rg}: win_rate {d_data['win_rate']}%")
+            evidence_hits += 1
+            break
+    if h2_evidence:
+        insights.append({
+            "hypothesis": "defensive strategy demonstrates robustness across regimes",
+            "support": round(min(evidence_hits / max(total_possible, 1), 1.0), 2),
+            "evidence": h2_evidence,
+        })
+
+    # ── Hypothesis 3: breakout + sideways failure → inefficiency ──
+    total_possible += 1
+    h3_evidence = []
+    for rg, strategies in matrix.items():
+        b_data = strategies.get("breakout", {})
+        if b_data.get("win_rate") is not None and b_data["count"] > 0:
+            if rg == "sideways" and b_data["win_rate"] < 50:
+                h3_evidence.append(f"breakout in sideways: win_rate {b_data['win_rate']}%")
+                evidence_hits += 1
+                break
+    if not h3_evidence:
+        b_risk = failure_risk.get("strategy_failure_risk", {}).get("breakout", {})
+        if b_risk.get("risk_score", 0) >= 0.3:
+            h3_evidence.append(f"breakout failure risk: {b_risk['risk_score']}")
+            evidence_hits += 1
+    if h3_evidence:
+        insights.append({
+            "hypothesis": "breakout strategy is inefficient in sideways markets",
+            "support": round(min(evidence_hits / max(total_possible, 1), 1.0), 2),
+            "evidence": h3_evidence,
+        })
+
+    # ── Hypothesis 4: mean_reversion under transition → regime shift risk ──
+    total_possible += 1
+    h4_evidence = []
+    for rg, strategies in matrix.items():
+        mr_data = strategies.get("mean_reversion", {})
+        if mr_data.get("win_rate") is not None and mr_data["count"] > 0:
+            if rg in ("high_volatility", "bull") and mr_data["win_rate"] < 50:
+                h4_evidence.append(f"mean_reversion in {rg}: win_rate {mr_data['win_rate']}%")
+                evidence_hits += 1
+                break
+    mr_risk = failure_risk.get("strategy_failure_risk", {}).get("mean_reversion", {})
+    if mr_risk.get("risk_score", 0) >= 0.3:
+        h4_evidence.append(f"mean_reversion risk elevated: {mr_risk['risk_score']}")
+        evidence_hits += 1
+    if h4_evidence:
+        insights.append({
+            "hypothesis": "mean_reversion underperforms during regime shifts",
+            "support": round(min(evidence_hits / max(total_possible, 1), 1.0), 2),
+            "evidence": h4_evidence,
+        })
+
+    result["insights"] = insights
+
+    # ── 生成结论 ──
+    conclusions = []
+    for st, data in stable.items():
+        if data.get("stability_score") is not None and data["stability_score"] > 60:
+            conclusions.append(f"{st} is robust across regimes")
+        elif data.get("stability_score") is not None and data["stability_score"] < 30:
+            conclusions.append(f"{st} is regime-dependent")
+    if regime in ("high_volatility", "bear") and transition.get("is_transitioning"):
+        conclusions.append("Market regime is dominant factor")
+    if not conclusions:
+        conclusions.append("Insufficient data for robust conclusions")
+    result["generated_conclusions"] = conclusions
+
+    # ── 行动建议 ──
+    focus = []
+    for h in insights:
+        h_name = h["hypothesis"].lower()
+        if "momentum" in h_name and h["support"] >= 0.5:
+            focus.append("reduce momentum exposure in non-bull markets")
+        if "defensive" in h_name and h["support"] >= 0.5:
+            focus.append("increase defensive allocation in unstable regimes")
+        if "breakout" in h_name and h["support"] >= 0.5:
+            focus.append("avoid breakout strategies in sideways markets")
+        if "mean_reversion" in h_name and h["support"] >= 0.5:
+            focus.append("reduce mean_reversion during regime transitions")
+    if not focus:
+        focus.append("continue monitoring for actionable patterns")
+    result["recommended_focus"] = focus
+
+    # ── 整体可信度 ──
+    n_strategies = len(stable.get("strategy_stability", {}))
+    n_risk = len(failure_risk.get("strategy_failure_risk", {}))
+    n_matrix = sum(len(s) for s in matrix.values())
+    data_richness = min((n_strategies + n_risk + n_matrix) / 12, 1.0)
+    n_insights = len(insights)
+    insight_confidence = n_insights / 4.0 if n_insights > 0 else 0.0
+    result["confidence"] = round((data_richness * 0.5 + insight_confidence * 0.5), 2)
+
+    return result
+
+
+def build_research_report(review_rows: list[dict]) -> dict:
+    """生成研究摘要报告（只读）。"""
+    research = run_autonomous_strategy_research(review_rows)
+    key_findings = []
+    actionable = []
+    for h in research.get("insights", []):
+        if h["support"] >= 0.5:
+            key_findings.append(h["hypothesis"])
+    for c in research.get("generated_conclusions", []):
+        if "regime" in c.lower() and c not in key_findings:
+            key_findings.append(c)
+    for f in research.get("recommended_focus", []):
+        actionable.append(f)
+    if not key_findings:
+        key_findings = ["Insufficient data for key findings"]
+    if not actionable:
+        actionable = ["Continue monitoring for actionable patterns"]
+    return {
+        "key_findings": key_findings,
+        "actionable_insights": actionable,
+        "confidence": research["confidence"],
+    }
+
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
