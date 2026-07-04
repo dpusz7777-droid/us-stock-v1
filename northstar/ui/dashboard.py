@@ -735,6 +735,77 @@ def run() -> None:
             unsafe_allow_html=True,
         )
 
+    # ── 按复盘周期统计 ───────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">📊 按复盘周期统计</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review import get_recommendation_horizon_stats, format_change_pct
+        from northstar.data.recommendation_store import get_all_recommendations as _hor_recs
+
+        try:
+            hor_recs = _hor_recs()
+        except Exception:
+            hor_recs = []
+
+        if not hor_recs:
+            st.markdown(
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无复盘周期统计</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            horizon_rows = get_recommendation_horizon_stats(hor_recs)
+
+            if not horizon_rows:
+                st.markdown(
+                    '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无复盘周期统计</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                def _hor_pct(v: float | None) -> str:
+                    if v is None:
+                        return "暂无数据"
+                    return format_change_pct(v)
+
+                def _hor_rate(v: float | None) -> str:
+                    if v is None:
+                        return "暂无数据"
+                    return f"{v:.2f}%"
+
+                hor_table_rows = []
+                for row in horizon_rows:
+                    hor_table_rows.append({
+                        "复盘周期": row["label"],
+                        "建议总数": row["total_count"],
+                        "已复盘": row["reviewed_count"],
+                        "待复盘": row["pending_count"],
+                        "判断正确": row["win_count"],
+                        "判断错误": row["loss_count"],
+                        "横盘": row["flat_count"],
+                        "中性": row["neutral_count"],
+                        "未知": row["unknown_count"],
+                        "胜率": _hor_rate(row["win_rate"]),
+                        "平均原始涨跌幅": _hor_pct(row["avg_raw_change_pct"]),
+                        "平均方向涨跌幅": _hor_pct(row["avg_normalized_change_pct"]),
+                        "最佳方向涨跌幅": _hor_pct(row["best_normalized_change_pct"]),
+                        "最差方向涨跌幅": _hor_pct(row["worst_normalized_change_pct"]),
+                    })
+
+                import pandas as pd
+                df_hor = pd.DataFrame(hor_table_rows)
+                st.dataframe(df_hor, use_container_width=True, hide_index=True)
+                st.caption("方向涨跌幅表示已按买入/卖出建议方向归一化")
+
+    except ImportError as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#DC2626;font-size:11px;">按复盘周期统计模块未加载: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#B45309;font-size:11px;">按复盘周期统计异常: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown('<div class="ftr">北极星 · 仅用于研究参考 · 不构成投资建议</div>', unsafe_allow_html=True)
 
 

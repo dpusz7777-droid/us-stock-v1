@@ -726,6 +726,204 @@ def get_recommendation_action_stats(recommendations: list[dict]) -> list[dict]:
     return result_rows
 
 
+def _infer_days_elapsed(rec: dict) -> int | None:
+    """从建议记录中推断已过天数。
+
+    优先使用天数字段，否则尝试根据日期计算。
+    返回 int 天数，无法推断时返回 None。
+    """
+    # 尝试天数字段
+    days_field_keys = ("days_elapsed", "review_days", "holding_days", "days_since_recommendation", "review_after_days")
+    for key in days_field_keys:
+        val = rec.get(key)
+        if val is not None:
+            try:
+                return int(float(str(val).replace(" days", "").replace(" day", "").strip()))
+            except (TypeError, ValueError):
+                pass
+
+    # 尝试从日期计算
+    date_field_keys_rec = ("recommendation_date", "created_at", "date")
+    date_field_keys_rev = ("review_date", "reviewed_at", "current_date", "updated_at")
+    rec_date = None
+    rev_date = None
+    for key in date_field_keys_rec:
+        val = rec.get(key)
+        if val:
+            try:
+                rec_date = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                break
+            except (TypeError, ValueError):
+                pass
+    for key in date_field_keys_rev:
+        val = rec.get(key)
+        if val:
+            try:
+                rev_date = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                break
+            except (TypeError, ValueError):
+                pass
+    if rec_date and rev_date:
+        delta = (rev_date - rec_date).days
+        return max(0, delta)
+
+    # 尝试 last_run_time / 当前时间
+    if rec_date:
+        delta = (datetime.now() - rec_date).days
+        return max(0, delta)
+
+    return None
+
+
+def _classify_horizon(days: int | None) -> tuple[str, str]:
+    """根据天数返回 (horizon_group, label)。"""
+    if days is None:
+        return ("UNKNOWN", "未知")
+    if days <= 1:
+        return ("0-1D", "0-1天")
+    elif days <= 3:
+        return ("2-3D", "2-3天")
+    elif days <= 7:
+        return ("4-7D", "4-7天")
+    elif days <= 14:
+        return ("8-14D", "8-14天")
+    elif days <= 30:
+        return ("15-30D", "15-30天")
+    else:
+        return ("30D+", "30天以上")
+
+
+def get_recommendation_horizon_stats(recommendations: list[dict]) -> list[dict]:
+    """按复盘周期统计建议质量。
+
+    参数：
+        recommendations: 完整建议记录列表
+
+    返回：
+        list[dict]，每个元素：
+            horizon_group: str       周期分组代码
+            label: str               中文展示名
+            total_count: int
+            reviewed_count: int
+            pending_count: int
+            win_count: int
+            loss_count: int
+            flat_count: int
+            neutral_count: int
+            unknown_count: int
+            win_rate: float|None
+            avg_raw_change_pct: float|None
+            avg_normalized_change_pct: float|None
+            best_normalized_change_pct: float|None
+            worst_normalized_change_pct: float|None
+
+    安全保证：
+        - 字段缺失、日期格式错误不会崩溃
+        - 没有任何写回操作
+    """
+    from collections import defaultdict
+
+    groups: dict[str, dict] = defaultdict(lambda: {
+        "total_count": 0,
+        "reviewed_count": 0,
+        "pending_count": 0,
+        "win_count": 0,
+        "loss_count": 0,
+        "flat_count": 0,
+        "neutral_count": 0,
+        "unknown_count": 0,
+        "raw_change_pcts": [],
+        "normalized_change_pcts": [],
+    })
+
+    # 收集所有分组
+    for rec in recommendations:
+        days = _infer_days_elapsed(rec)
+        group_key, _ = _classify_horizon(days)
+        g = groups[group_key]
+        g["total_count"] += 1
+
+        status = rec.get("status", "open")
+        if status != "reviewed":
+            g["pending_count"] += 1
+            continue
+
+        g["reviewed_count"] += 1
+        outcome = evaluate_recommendation_outcome(rec)
+        o = outcome["outcome"]
+
+        if o == "win":
+            g["win_count"] += 1
+        elif o == "loss":
+            g["loss_count"] += 1
+        elif o == "flat":
+            g["flat_count"] += 1
+        elif o == "neutral":
+            g["neutral_count"] += 1
+        else:
+            g["unknown_count"] += 1
+
+        if outcome["raw_change_pct"] is not None:
+            g["raw_change_pcts"].append(outcome["raw_change_pct"])
+        if outcome["normalized_change_pct"] is not None:
+            g["normalized_change_pcts"].append(outcome["normalized_change_pct"])
+
+    HORIZON_ORDER = ["0-1D", "2-3D", "4-7D", "8-14D", "15-30D", "30D+", "UNKNOWN"]
+    HORIZON_LABEL = {
+        "0-1D": "0-1天",
+        "2-3D": "2-3天",
+        "4-7D": "4-7天",
+        "8-14D": "8-14天",
+        "15-30D": "15-30天",
+        "30D+": "30天以上",
+        "UNKNOWN": "未知",
+    }
+
+    result_rows = []
+    for hg in HORIZON_ORDER:
+        g = groups.get(hg)
+        if g is None:
+            continue
+
+        denom = g["win_count"] + g["loss_count"] + g["flat_count"]
+        win_rate: float | None = None
+        if denom > 0:
+            win_rate = round(g["win_count"] / denom * 100, 2)
+
+        avg_raw: float | None = None
+        if g["raw_change_pcts"]:
+            avg_raw = round(sum(g["raw_change_pcts"]) / len(g["raw_change_pcts"]), 2)
+
+        avg_norm: float | None = None
+        best_norm: float | None = None
+        worst_norm: float | None = None
+        if g["normalized_change_pcts"]:
+            vals = g["normalized_change_pcts"]
+            avg_norm = round(sum(vals) / len(vals), 2)
+            best_norm = round(max(vals), 2)
+            worst_norm = round(min(vals), 2)
+
+        result_rows.append({
+            "horizon_group": hg,
+            "label": HORIZON_LABEL.get(hg, hg),
+            "total_count": g["total_count"],
+            "reviewed_count": g["reviewed_count"],
+            "pending_count": g["pending_count"],
+            "win_count": g["win_count"],
+            "loss_count": g["loss_count"],
+            "flat_count": g["flat_count"],
+            "neutral_count": g["neutral_count"],
+            "unknown_count": g["unknown_count"],
+            "win_rate": win_rate,
+            "avg_raw_change_pct": avg_raw,
+            "avg_normalized_change_pct": avg_norm,
+            "best_normalized_change_pct": best_norm,
+            "worst_normalized_change_pct": worst_norm,
+        })
+
+    return result_rows
+
+
 def calculate_review_stats(recommendations: list[dict]) -> dict:
     """计算建议复盘统计指标。
 
