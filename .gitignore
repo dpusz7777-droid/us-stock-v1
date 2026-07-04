@@ -68,7 +68,25 @@ Thumbs.db
 
 # ── 日志 ──
 *.log
-logs/*.log
+logs/
+
+# ── 运行锁文件 ──
+.run_locks/
+
+# ── 运行时生成的数据文件 ──
+northstar/data/strategy_feedback.json
+northstar/data/system_state.json
+northstar/data/recommendation_review_snapshots.json
+northstar/data/recommendation_review*.json
+
+# ── Streamlit 配置缓存 ──
+.streamlit/
+.streamlit/secrets.toml
+.streamlit/config.toml
+
+# ── 类型检查/代码检查缓存 ──
+.mypy_cache/
+.ruff_cache/
 .aider*
 
 # ── 运行缓存 ──
