@@ -276,86 +276,227 @@ def run() -> None:
             unsafe_allow_html=True,
         )
 
-    # ── 建议复盘 ─────────────────────────────────────────────────────────
+    # ── 建议复盘 v2 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📋 建议复盘</div>', unsafe_allow_html=True)
 
     try:
         from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct
+        from northstar.data.recommendation_store import update_recommendation_review, get_all_recommendations
 
         try:
-            from northstar.data.recommendation_store import list_recommendations as _list_recs
-            recs_for_review = _list_recs(limit=20)
+            all_recs = get_all_recommendations()
         except Exception:
-            recs_for_review = []
+            all_recs = []
 
-        if not recs_for_review:
+        if not all_recs:
             st.markdown(
                 '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无可复盘建议</div>',
                 unsafe_allow_html=True,
             )
         else:
-            review_data = review_recommendations(recs_for_review)
+            # ── 计算复盘数据（全量，用于筛选和排序） ──
+            review_data = review_recommendations(all_recs)
 
+            # ── 筛选控件 ──
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+            with col_f1:
+                filter_symbol = st.text_input("🔍 股票代码", value="", key="rv_sym", placeholder="NVDA").strip().upper()
+            with col_f2:
+                filter_action = st.selectbox("建议动作", ["全部", "买入", "持有", "卖出", "观察", "风险提示"], key="rv_act")
+            with col_f3:
+                filter_status = st.selectbox("复盘状态", ["全部", "上涨", "下跌", "持平", "无法计算", "价格获取失败", "缺少建议价格，无法计算收益率", "请使用英文股票代码，例如 NVDA"], key="rv_sts")
+            with col_f4:
+                filter_due = st.selectbox("到期筛选", ["全部", "已到复盘时间", "未到复盘时间"], key="rv_due")
+
+            # ── 排序控件 ──
+            sort_option = st.selectbox(
+                "排序方式",
+                ["创建时间倒序", "涨跌幅从高到低", "涨跌幅从低到高", "已过天数从高到低", "股票代码排序"],
+                key="rv_sort",
+            )
+
+            # ── 执行筛选 ──
+            filtered = []
             for r in review_data:
-                act = r.get("action", "—")
-                act_color = {
-                    "买入": "sbuy", "卖出": "ssell", "持有": "shold",
-                    "观察": "shold", "风险提示": "ssell",
-                }.get(act, "shold")
-                symbol = r.get("symbol", "?")
-                entry_price = r.get("price")
-                entry_price_str = f"${entry_price:.2f}" if entry_price else "—"
-                current_price = r.get("current_price")
-                current_price_str = f"${current_price:.2f}" if current_price else "—"
-                change_pct = r.get("change_pct")
-                change_pct_str = format_change_pct(change_pct) if current_price else "N/A"
-                change_pct_color = "gn" if change_pct and change_pct > 0 else ("rd" if change_pct and change_pct < 0 else "")
-                days_since = r.get("days_since")
-                days_str = f"{days_since}天" if days_since is not None else "—"
-                due = r.get("due_for_review", False)
-                due_tag = "🔔 已到期" if due else "⏳ 未到期"
-                status = r.get("review_status", "无法计算")
-                ts = r.get("created_at", "")[-8:] if r.get("created_at") else ""
+                # 股票代码筛选
+                if filter_symbol and not r.get("symbol", "").upper().startswith(filter_symbol):
+                    continue
+                # 建议动作筛选
+                if filter_action != "全部" and r.get("action") != filter_action:
+                    continue
+                # 复盘状态筛选
+                if filter_status != "全部" and r.get("review_status") != filter_status:
+                    continue
+                # 到期筛选
+                if filter_due == "已到复盘时间" and not r.get("due_for_review", False):
+                    continue
+                if filter_due == "未到复盘时间" and r.get("due_for_review", False):
+                    continue
+                filtered.append(r)
 
-                # 根据 review_status 定制显示
-                change_value = r.get("change")
-                change_str = format_change(change_value)
+            # ── 执行排序 ──
+            try:
+                if sort_option == "创建时间倒序":
+                    filtered.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+                elif sort_option == "涨跌幅从高到低":
+                    filtered.sort(key=lambda x: x.get("change_pct") if x.get("change_pct") is not None else float("-inf"), reverse=True)
+                elif sort_option == "涨跌幅从低到高":
+                    filtered.sort(key=lambda x: x.get("change_pct") if x.get("change_pct") is not None else float("inf"))
+                elif sort_option == "已过天数从高到低":
+                    filtered.sort(key=lambda x: x.get("days_since") if x.get("days_since") is not None else 0, reverse=True)
+                elif sort_option == "股票代码排序":
+                    filtered.sort(key=lambda x: x.get("symbol", ""))
+            except Exception:
+                pass  # 排序异常不崩溃
 
-                if status in ("缺少建议价格，无法计算收益率", "请使用英文股票代码，例如 NVDA"):
-                    # 非标准场景：单行显示提示
-                    st.markdown(
-                        f'<div class="sg">'
-                        f'<span class="sb {act_color}">{act}</span>'
-                        f'<span class="stk">{symbol}</span>'
-                        f'<span class="srs" style="color:#B45309;">⚠️ {status}</span>'
-                        f'<span class="fts">{ts}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                elif status in ("价格获取失败", "暂无当前价格", "无法计算"):
-                    st.markdown(
-                        f'<div class="sg">'
-                        f'<span class="sb {act_color}">{act}</span>'
-                        f'<span class="stk">{symbol}</span>'
-                        f'<span class="srs">建议价 {entry_price_str} · 当前价 {current_price_str} · 涨跌 {change_str} · {status}</span>'
-                        f'<span class="fts">{ts}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    # 正常计算场景
+            if not filtered:
+                st.markdown(
+                    '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无匹配的复盘记录</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                # ── 每条记录展示 ──
+                for r in filtered:
+                    rec_id = r.get("id", "")
+                    act = r.get("action", "—")
+                    act_color = {
+                        "买入": "sbuy", "卖出": "ssell", "持有": "shold",
+                        "观察": "shold", "风险提示": "ssell",
+                    }.get(act, "shold")
+                    symbol = r.get("symbol", "?")
+                    entry_price = r.get("price")
+                    entry_price_str = f"${entry_price:.2f}" if entry_price else "—"
+                    current_price = r.get("current_price")
+                    current_price_str = f"${current_price:.2f}" if current_price else "—"
+                    change_pct = r.get("change_pct")
+                    change_pct_str = format_change_pct(change_pct) if current_price else "N/A"
+                    change_pct_color = "gn" if change_pct and change_pct > 0 else ("rd" if change_pct and change_pct < 0 else "")
+                    change_value = r.get("change")
+                    change_str = format_change(change_value)
                     change_color = "gn" if change_value and change_value > 0 else ("rd" if change_value and change_value < 0 else "")
-                    st.markdown(
-                        f'<div class="sg">'
-                        f'<span class="sb {act_color}">{act}</span>'
-                        f'<span class="stk">{symbol}</span>'
-                        f'<span class="srs">建议价 {entry_price_str} → 当前 {current_price_str} · '
-                        f'涨跌 <span class="{change_color}">{change_str}</span> · '
-                        f'<span class="{change_pct_color}">{change_pct_str}</span> · {days_str} · {due_tag} · {status}</span>'
-                        f'<span class="fts">{ts}</span>'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                    days_since = r.get("days_since")
+                    days_str = f"{days_since}天" if days_since is not None else "—"
+                    due = r.get("due_for_review", False)
+                    due_tag = "🔔 已到期" if due else "⏳ 未到期"
+                    status = r.get("review_status", "无法计算")
+                    ts = r.get("created_at", "")[-8:] if r.get("created_at") else ""
+
+                    # 检查是否已复盘
+                    orig_record = next((rec for rec in all_recs if rec.get("id") == rec_id), None)
+                    already_reviewed = orig_record is not None and orig_record.get("status") == "reviewed"
+
+                    if already_reviewed:
+                        # 已复盘记录：显示复盘状态
+                        orig_result = orig_record.get("review_result", {})
+                        if isinstance(orig_result, dict):
+                            reviewed_at = orig_result.get("reviewed_at", "")[-8:] if orig_result.get("reviewed_at") else ""
+                            review_price = orig_result.get("review_price")
+                            review_price_str = f"${review_price:.2f}" if review_price else "—"
+                            review_pct = orig_result.get("change_pct")
+                            review_pct_str = format_change_pct(review_pct) if review_pct is not None else "N/A"
+                            review_status_text = orig_result.get("review_status", "已复盘")
+                        else:
+                            reviewed_at = ""
+                            review_price_str = "—"
+                            review_pct_str = "N/A"
+                            review_status_text = "已复盘"
+
+                        st.markdown(
+                            f'<div class="sg" style="border-left:3px solid #16A34A;">'
+                            f'<span class="sb {act_color}">{act}</span>'
+                            f'<span class="stk">{symbol}</span>'
+                            f'<span class="srs">'
+                            f'建议价 {entry_price_str} → 当前 {current_price_str} · '
+                            f'涨跌 <span class="{change_color}">{change_str}</span> · '
+                            f'<span class="{change_pct_color}">{change_pct_str}</span> · '
+                            f'{days_str} · ✅ 已复盘({review_status_text}) · 复盘价 {review_price_str} · {review_pct_str}'
+                            f'{f" · {reviewed_at}" if reviewed_at else ""}'
+                            f'</span>'
+                            f'<span class="fts">{ts}</span>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        # 未复盘记录
+                        if status in ("缺少建议价格，无法计算收益率", "请使用英文股票代码，例如 NVDA"):
+                            st.markdown(
+                                f'<div class="sg">'
+                                f'<span class="sb {act_color}">{act}</span>'
+                                f'<span class="stk">{symbol}</span>'
+                                f'<span class="srs" style="color:#B45309;">⚠️ {status}</span>'
+                                f'<span class="fts">{ts}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        elif status in ("价格获取失败", "暂无当前价格", "无法计算"):
+                            st.markdown(
+                                f'<div class="sg">'
+                                f'<span class="sb {act_color}">{act}</span>'
+                                f'<span class="stk">{symbol}</span>'
+                                f'<span class="srs">建议价 {entry_price_str} · 当前价 {current_price_str} · 涨跌 {change_str} · {status}</span>'
+                                f'<span class="fts">{ts}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+                        else:
+                            st.markdown(
+                                f'<div class="sg">'
+                                f'<span class="sb {act_color}">{act}</span>'
+                                f'<span class="stk">{symbol}</span>'
+                                f'<span class="srs">建议价 {entry_price_str} → 当前 {current_price_str} · '
+                                f'涨跌 <span class="{change_color}">{change_str}</span> · '
+                                f'<span class="{change_pct_color}">{change_pct_str}</span> · '
+                                f'{days_str} · {due_tag} · {status}</span>'
+                                f'<span class="fts">{ts}</span>'
+                                f'</div>',
+                                unsafe_allow_html=True,
+                            )
+
+                        # ── 手动写回复盘 ──
+                        btn_key = f"review_btn_{rec_id}"
+                        if st.button(f"✅ 标记已复盘", key=btn_key, help=f"将 {symbol} 的建议标记为已复盘"):
+                            from datetime import datetime as _dt
+                            review_at = _dt.now().strftime("%Y-%m-%dT%H:%M:%S")
+                            if status in ("缺少建议价格，无法计算收益率", "请使用英文股票代码，例如 NVDA"):
+                                review_result_dict = {
+                                    "reviewed_at": review_at,
+                                    "review_price": None,
+                                    "change": None,
+                                    "change_pct": None,
+                                    "days_since": days_since,
+                                    "review_status": status,
+                                    "review_notes": status,
+                                }
+                            elif status in ("价格获取失败", "暂无当前价格", "无法计算"):
+                                sys_note = "缺少建议价格或当前价格，无法计算收益率" if not entry_price else f"当前价格获取失败: {r.get('price_fetch_error', '')}"
+                                review_result_dict = {
+                                    "reviewed_at": review_at,
+                                    "review_price": current_price,
+                                    "change": None,
+                                    "change_pct": None,
+                                    "days_since": days_since,
+                                    "review_status": status,
+                                    "review_notes": sys_note,
+                                }
+                            else:
+                                review_result_dict = {
+                                    "reviewed_at": review_at,
+                                    "review_price": current_price,
+                                    "change": change_value,
+                                    "change_pct": change_pct,
+                                    "days_since": days_since,
+                                    "review_status": status,
+                                }
+
+                            success, err_msg = update_recommendation_review(
+                                recommendation_id=rec_id,
+                                review_result=review_result_dict,
+                            )
+                            if success:
+                                st.success(f"{symbol} 已标记为已复盘")
+                                st.rerun()
+                            else:
+                                st.error(f"标记失败: {err_msg}")
     except ImportError as exc:
         st.markdown(
             f'<div class="cd" style="color:#DC2626;font-size:11px;">建议复盘模块未加载: {exc}</div>',

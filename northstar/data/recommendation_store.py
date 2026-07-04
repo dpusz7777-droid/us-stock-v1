@@ -142,7 +142,53 @@ def update_review_status(record_id: str, result: str, notes: str = "") -> bool:
     return False
 
 
+def update_recommendation_review(
+    recommendation_id: str,
+    review_result: dict | str | None,
+) -> tuple[bool, str]:
+    """原子更新单条建议的复盘结果。
+
+    参数：
+        recommendation_id: 建议记录 ID
+        review_result: 复盘结果 dict 或字符串，写入到 review_result 字段
+
+    注意：
+        本函数只更新 status 和 review_result 两个字段。
+        绝不覆盖原始 notes、reason、price 等用户填写的数据。
+        如需记录系统说明，请放入 review_result 内部（如 review_notes）。
+
+    返回：
+        (成功标志, 错误信息或空字符串)
+    """
+    records = _read_raw()
+    if not records:
+        return False, "recommendations.json 文件为空或损坏"
+
+    found = False
+    for rec in records:
+        if rec.get("id") == recommendation_id:
+            rec["status"] = "reviewed"
+            rec["review_result"] = review_result
+            # 注意：绝不覆盖 rec["notes"]，用户备注必须原样保留
+            found = True
+            break
+
+    if not found:
+        return False, f"未找到建议记录: {recommendation_id}"
+
+    try:
+        _write_raw(records)
+        return True, ""
+    except Exception as exc:
+        return False, f"写入失败: {exc}"
+
+
 def count_open() -> int:
     """返回待验证的建议数量。"""
     records = _read_raw()
     return sum(1 for r in records if r.get("status") == "open")
+
+
+def get_all_recommendations() -> list[dict]:
+    """返回所有建议记录（无 limit），用于复盘功能。"""
+    return _read_raw()
