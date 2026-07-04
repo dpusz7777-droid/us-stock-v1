@@ -558,6 +558,89 @@ def run() -> None:
     except Exception:
         pass
 
+    # ── 复盘快照 ─────────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">📝 复盘快照</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review_snapshot import (
+            save_recommendation_review_snapshot,
+            get_latest_recommendation_review_snapshot,
+            get_recommendation_review_snapshot_history,
+        )
+        from northstar.data.recommendation_review import format_change_pct
+
+        latest_snap = get_latest_recommendation_review_snapshot()
+        if latest_snap:
+            snap_time = latest_snap.get("created_at", "")[-8:] if latest_snap.get("created_at") else ""
+            st.caption(f"最近快照：{snap_time}")
+        else:
+            st.caption("暂无复盘快照")
+
+        # Save button
+        col_snap1, col_snap2 = st.columns([1, 4])
+        with col_snap1:
+            if st.button("💾 保存当前复盘快照", key="snap_save", type="primary"):
+                try:
+                    from northstar.data.recommendation_review import (
+                        get_recommendation_review_stats,
+                        get_recommendation_symbol_stats,
+                        get_recommendation_action_stats,
+                        get_recommendation_horizon_stats,
+                        generate_recommendation_review_summary,
+                    )
+                    from northstar.data.recommendation_store import get_all_recommendations as _snap_recs
+
+                    snap_recs = _snap_recs()
+                    if snap_recs:
+                        o_stats = get_recommendation_review_stats(snap_recs)
+                        s_stats = get_recommendation_symbol_stats(snap_recs)
+                        a_stats = get_recommendation_action_stats(snap_recs)
+                        h_stats = get_recommendation_horizon_stats(snap_recs)
+                        sumry = generate_recommendation_review_summary(o_stats, s_stats, a_stats, h_stats)
+                        save_recommendation_review_snapshot(o_stats, s_stats, a_stats, h_stats, sumry)
+                        st.success("已保存当前复盘快照")
+                        st.rerun()
+                    else:
+                        st.info("暂无建议数据，无法保存快照")
+                except Exception:
+                    st.error("保存快照失败")
+        with col_snap2:
+            st.caption("点击保存当前复盘统计结果，便于日后对比建议质量变化")
+
+        # Show latest snapshots
+        snap_history = get_recommendation_review_snapshot_history(limit=5)
+        if snap_history:
+            def _snap_pct(v):
+                if v is None:
+                    return "暂无数据"
+                return format_change_pct(v)
+
+            def _snap_rate(v):
+                if v is None:
+                    return "暂无数据"
+                return f"{v:.2f}%"
+
+            snap_rows = []
+            for snap in snap_history:
+                o = snap.get("overall", {})
+                sr = snap.get("summary", {})
+                snap_rows.append({
+                    "快照时间": (snap.get("created_at", "") or "")[-8:] or "—",
+                    "方向胜率": _snap_rate(o.get("win_rate")),
+                    "平均方向涨跌幅": _snap_pct(o.get("avg_normalized_change_pct")),
+                    "可判断样本": o.get("evaluable_count", 0),
+                    "样本可信度": o.get("confidence_label", "暂无数据"),
+                    "摘要结论": sr.get("headline", "")[:30] if sr.get("headline") else "—",
+                })
+
+            import pandas as pd
+            df_snap = pd.DataFrame(snap_rows)
+            st.dataframe(df_snap, use_container_width=True, hide_index=True)
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
     # ── 建议复盘统计 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 建议复盘统计</div>', unsafe_allow_html=True)
 
