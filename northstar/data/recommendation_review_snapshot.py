@@ -153,3 +153,115 @@ def get_recommendation_review_snapshot_history(limit: int = 20) -> list[dict]:
     snapshots = _read_raw()
     snapshots.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return snapshots[:limit]
+
+
+def get_recommendation_review_snapshot_trend(limit: int = 30) -> list[dict]:
+    """读取最近 limit 条快照，按 created_at 从旧到新排序，用于趋势展示。
+
+    每条包含：
+        created_at, display_time, win_rate, avg_normalized_change_pct,
+        evaluable_count, confidence_level, confidence_label, headline
+
+    参数：
+        limit: 最多读取的快照数量
+
+    返回：
+        list[dict]，按时间从旧到新排序。无快照时返回 []。
+    """
+    snapshots = _read_raw()
+    if not snapshots:
+        return []
+
+    # 按 created_at 从新到旧取 limit 条
+    snapshots.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    recent = snapshots[:limit]
+
+    # 反转成从旧到新
+    recent.reverse()
+
+    trend_data = []
+    for snap in recent:
+        overall = snap.get("overall", {}) or {}
+        summary = snap.get("summary", {}) or {}
+        created_at = snap.get("created_at", "") or ""
+
+        # Format display_time
+        display_time = created_at
+        if created_at and len(created_at) >= 16:
+            try:
+                dt = datetime.fromisoformat(created_at)
+                display_time = dt.strftime("%m-%d %H:%M")
+            except (TypeError, ValueError):
+                display_time = created_at[-11:] if len(created_at) >= 11 else created_at
+        elif created_at:
+            display_time = created_at
+
+        trend_data.append({
+            "created_at": created_at,
+            "display_time": display_time,
+            "win_rate": overall.get("win_rate"),
+            "avg_normalized_change_pct": overall.get("avg_normalized_change_pct"),
+            "evaluable_count": overall.get("evaluable_count", 0),
+            "confidence_level": overall.get("confidence_level", ""),
+            "confidence_label": overall.get("confidence_label", ""),
+            "headline": summary.get("headline", ""),
+        })
+
+    return trend_data
+
+
+def generate_recommendation_review_trend_summary(trend_data: list[dict]) -> str:
+    """根据趋势数据生成简短的中文趋势结论。
+
+    参数：
+        trend_data: get_recommendation_review_snapshot_trend 返回的数据
+
+    返回：
+        str，一段简洁中文描述
+    """
+    if len(trend_data) < 2:
+        return "复盘快照不足，暂时无法判断趋势。"
+
+    first = trend_data[0]
+    last = trend_data[-1]
+    parts: list[str] = []
+
+    # win_rate 对比
+    first_wr = first.get("win_rate")
+    last_wr = last.get("win_rate")
+    if first_wr is not None and last_wr is not None:
+        diff = last_wr - first_wr
+        if diff > 5:
+            parts.append("方向胜率有所提升")
+        elif diff < -5:
+            parts.append("方向胜率有所下降")
+        else:
+            parts.append("方向胜率基本稳定")
+    else:
+        parts.append("方向胜率暂无可比数据")
+
+    # avg_normalized_change_pct 对比
+    first_an = first.get("avg_normalized_change_pct")
+    last_an = last.get("avg_normalized_change_pct")
+    if first_an is not None and last_an is not None:
+        diff_n = last_an - first_an
+        if diff_n > 1:
+            parts.append("平均方向涨跌幅有所改善")
+        elif diff_n < -1:
+            parts.append("平均方向涨跌幅有所回落")
+        else:
+            parts.append("平均方向涨跌幅基本稳定")
+    else:
+        parts.append("平均方向涨跌幅暂无可比数据")
+
+    # evaluable_count 对比
+    first_ec = first.get("evaluable_count", 0)
+    last_ec = last.get("evaluable_count", 0)
+    if last_ec > first_ec:
+        parts.append("可判断样本正在积累")
+    elif last_ec < first_ec:
+        parts.append("可判断样本有所减少")
+    else:
+        parts.append("可判断样本数量未明显变化")
+
+    return "相比最早快照，" + "，".join(parts) + "。"

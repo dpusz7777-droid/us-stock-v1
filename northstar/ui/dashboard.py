@@ -641,6 +641,83 @@ def run() -> None:
     except Exception:
         pass
 
+    # ── 复盘趋势 ─────────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">📈 复盘趋势</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review_snapshot import (
+            get_recommendation_review_snapshot_trend,
+            generate_recommendation_review_trend_summary,
+        )
+        from northstar.data.recommendation_review import format_change_pct
+
+        trend_data = get_recommendation_review_snapshot_trend(limit=30)
+
+        if len(trend_data) < 2:
+            st.markdown(
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">复盘快照不足，至少需要 2 条快照才能展示趋势。</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            # Trend summary
+            trend_summary = generate_recommendation_review_trend_summary(trend_data)
+            st.info(trend_summary)
+
+            import pandas as pd
+            df_trend = pd.DataFrame(trend_data)
+
+            # A. Win rate trend
+            st.subheader("方向胜率趋势")
+            df_win = df_trend[["display_time", "win_rate"]].copy()
+            df_win = df_win.set_index("display_time")
+            df_win["win_rate"] = pd.to_numeric(df_win["win_rate"], errors="coerce")
+            st.line_chart(df_win, height=200)
+
+            # B. Avg normalized change_pct trend
+            st.subheader("平均方向涨跌幅趋势")
+            df_avg = df_trend[["display_time", "avg_normalized_change_pct"]].copy()
+            df_avg = df_avg.set_index("display_time")
+            df_avg["avg_normalized_change_pct"] = pd.to_numeric(df_avg["avg_normalized_change_pct"], errors="coerce")
+            st.line_chart(df_avg, height=200)
+
+            # C. Evaluable count trend
+            st.subheader("可判断样本数趋势")
+            df_ec = df_trend[["display_time", "evaluable_count"]].copy()
+            df_ec = df_ec.set_index("display_time")
+            df_ec["evaluable_count"] = pd.to_numeric(df_ec["evaluable_count"], errors="coerce")
+            st.line_chart(df_ec, height=200)
+
+            # D. Trend table
+            st.subheader("趋势明细")
+            def _trend_pct(v):
+                if v is None:
+                    return "暂无数据"
+                return format_change_pct(v)
+
+            def _trend_rate(v):
+                if v is None:
+                    return "暂无数据"
+                return f"{v:.2f}%"
+
+            trend_rows = []
+            for t in trend_data:
+                trend_rows.append({
+                    "快照时间": t["display_time"],
+                    "方向胜率": _trend_rate(t.get("win_rate")),
+                    "平均方向涨跌幅": _trend_pct(t.get("avg_normalized_change_pct")),
+                    "可判断样本": t.get("evaluable_count", 0),
+                    "样本可信度": t.get("confidence_label", ""),
+                    "摘要结论": (t.get("headline") or "")[:30] or "—",
+                })
+
+            df_tab = pd.DataFrame(trend_rows)
+            st.dataframe(df_tab, use_container_width=True, hide_index=True)
+
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
     # ── 建议复盘统计 ─────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📊 建议复盘统计</div>', unsafe_allow_html=True)
 
