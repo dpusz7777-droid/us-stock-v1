@@ -549,13 +549,15 @@ def run() -> None:
             win_rate_str = _pct_str(stats.get("win_rate"))
             avg_str = _pct_str(stats.get("avg_change_pct"))
             avg_dir_str = _pct_str(stats.get("avg_normalized_change_pct"))
+            conf_label = stats.get("confidence_label", "暂无数据")
 
             # Row 1: counts
-            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+            col_s1, col_s2, col_s3, col_s4, col_s5 = st.columns(5)
             col_s1.metric("建议总数", stats.get("total_count", 0))
             col_s2.metric("已复盘", stats.get("reviewed_count", 0))
             col_s3.metric("待复盘", stats.get("pending_count", 0))
             col_s4.metric("到期未复盘", stats.get("due_count", 0))
+            col_s5.metric("样本可信度", f"{conf_label}（{stats.get('evaluable_count', 0)}条）")
 
             # Row 2: win rate, avg change, avg direction, best, worst
             col_s5, col_s6, col_s7 = st.columns(3)
@@ -645,6 +647,8 @@ def run() -> None:
                         "已复盘": row["reviewed_count"],
                         "待复盘": row["pending_count"],
                         "胜率": _sym_rate(row["win_rate"]),
+                        "可判断样本": row.get("evaluable_count", 0),
+                        "样本可信度": row.get("confidence_label", "暂无数据"),
                         "平均涨跌幅": _sym_pct(row["avg_change_pct"]),
                         "最佳涨跌幅": _sym_pct(row["best_change_pct"]),
                         "最差涨跌幅": _sym_pct(row["worst_change_pct"]),

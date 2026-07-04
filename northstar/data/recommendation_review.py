@@ -208,6 +208,31 @@ def format_change(value: float | None) -> str:
         return "$0.00"
 
 
+def get_sample_confidence_label(evaluable_count: int) -> dict:
+    """根据可判断样本数返回样本量可信度标签。
+
+    参数：
+        evaluable_count: 可判断胜负的样本数量（win_count + loss_count + flat_count）
+
+    返回：
+        {
+            "confidence_level": str,   NO_DATA / VERY_LOW / LOW / MEDIUM / HIGH
+            "confidence_label": str,   中文展示文案
+            "evaluable_count": int
+        }
+    """
+    if evaluable_count <= 0:
+        return {"confidence_level": "NO_DATA", "confidence_label": "暂无可判断样本", "evaluable_count": 0}
+    elif evaluable_count <= 2:
+        return {"confidence_level": "VERY_LOW", "confidence_label": "样本很少", "evaluable_count": evaluable_count}
+    elif evaluable_count <= 5:
+        return {"confidence_level": "LOW", "confidence_label": "样本偏少", "evaluable_count": evaluable_count}
+    elif evaluable_count <= 10:
+        return {"confidence_level": "MEDIUM", "confidence_label": "样本一般", "evaluable_count": evaluable_count}
+    else:
+        return {"confidence_level": "HIGH", "confidence_label": "样本较充分", "evaluable_count": evaluable_count}
+
+
 def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
     """计算建议复盘统计指标（增强版）。
 
@@ -331,6 +356,10 @@ def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
         best_review = max(reviewed_recs_with_norm, key=lambda x: x["normalized_change_pct"])
         worst_review = min(reviewed_recs_with_norm, key=lambda x: x["normalized_change_pct"])
 
+    # Sample confidence
+    evaluable_count = win_count + loss_count + flat_count
+    confidence = get_sample_confidence_label(evaluable_count)
+
     return {
         "total_count": total_count,
         "reviewed_count": reviewed_count,
@@ -346,6 +375,9 @@ def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
         "avg_normalized_change_pct": avg_normalized_change_pct,
         "best_review": best_review,
         "worst_review": worst_review,
+        "evaluable_count": evaluable_count,
+        "confidence_level": confidence["confidence_level"],
+        "confidence_label": confidence["confidence_label"],
     }
 
 
@@ -472,6 +504,9 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
         if g["dates"]:
             latest_date = max(g["dates"])[:10]
 
+        # Sample confidence
+        confidence = get_sample_confidence_label(denom)
+
         result_rows.append({
             "symbol": symbol,
             "total_count": g["total_count"],
@@ -491,6 +526,9 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
             "worst_normalized_change_pct": worst_normalized_change_pct,
             "latest_date": latest_date,
             "latest_status": g["latest_status_raw"],
+            "evaluable_count": denom,
+            "confidence_level": confidence["confidence_level"],
+            "confidence_label": confidence["confidence_label"],
         })
 
     result_rows.sort(key=lambda x: (-x["total_count"], x["symbol"]))
@@ -703,6 +741,7 @@ def get_recommendation_action_stats(recommendations: list[dict]) -> list[dict]:
             best_norm = round(max(vals), 2)
             worst_norm = round(min(vals), 2)
 
+        confidence = get_sample_confidence_label(denom)
         result_rows.append({
             "action_group": ag,
             "action_display": ACTION_DISPLAY.get(ag, ag),
@@ -719,6 +758,9 @@ def get_recommendation_action_stats(recommendations: list[dict]) -> list[dict]:
             "avg_normalized_change_pct": avg_norm,
             "best_normalized_change_pct": best_norm,
             "worst_normalized_change_pct": worst_norm,
+            "evaluable_count": denom,
+            "confidence_level": confidence["confidence_level"],
+            "confidence_label": confidence["confidence_label"],
         })
 
     # Sort: total_count desc
@@ -903,6 +945,7 @@ def get_recommendation_horizon_stats(recommendations: list[dict]) -> list[dict]:
             best_norm = round(max(vals), 2)
             worst_norm = round(min(vals), 2)
 
+        confidence = get_sample_confidence_label(denom)
         result_rows.append({
             "horizon_group": hg,
             "label": HORIZON_LABEL.get(hg, hg),
@@ -919,6 +962,9 @@ def get_recommendation_horizon_stats(recommendations: list[dict]) -> list[dict]:
             "avg_normalized_change_pct": avg_norm,
             "best_normalized_change_pct": best_norm,
             "worst_normalized_change_pct": worst_norm,
+            "evaluable_count": denom,
+            "confidence_level": confidence["confidence_level"],
+            "confidence_label": confidence["confidence_label"],
         })
 
     return result_rows
