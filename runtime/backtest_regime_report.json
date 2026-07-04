@@ -1,0 +1,80 @@
+{
+  "regimes": {
+    "sideways": {
+      "best_strategy": "MeanReversionStrategy",
+      "ranking": [
+        {
+          "strategy": "MeanReversionStrategy",
+          "return": 0.074573,
+          "win_rate": 1.0,
+          "trade_count": 9
+        },
+        {
+          "strategy": "MomentumStrategy",
+          "return": -0.005892,
+          "win_rate": 0.2,
+          "trade_count": 15
+        }
+      ],
+      "return_distribution": {
+        "MeanReversionStrategy": 0.074573,
+        "MomentumStrategy": -0.005892
+      },
+      "win_rate_distribution": {
+        "MeanReversionStrategy": 1.0,
+        "MomentumStrategy": 0.2
+      }
+    },
+    "trending_down": {
+      "best_strategy": "MeanReversionStrategy",
+      "ranking": [
+        {
+          "strategy": "MeanReversionStrategy",
+          "return": 0.0,
+          "win_rate": 0.0,
+          "trade_count": 0
+        },
+        {
+          "strategy": "MomentumStrategy",
+          "return": -0.001271,
+          "win_rate": 0.333333,
+          "trade_count": 6
+        }
+      ],
+      "return_distribution": {
+        "MeanReversionStrategy": 0.0,
+        "MomentumStrategy": -0.001271
+      },
+      "win_rate_distribution": {
+        "MeanReversionStrategy": 0.0,
+        "MomentumStrategy": 0.333333
+      }
+    },
+    "trending_up": {
+      "best_strategy": "MomentumStrategy",
+      "ranking": [
+        {
+          "strategy": "MomentumStrategy",
+          "return": 0.023478,
+          "win_rate": 0.333333,
+          "trade_count": 19
+        },
+        {
+          "strategy": "MeanReversionStrategy",
+          "return": 0.0,
+          "win_rate": 0.0,
+          "trade_count": 0
+        }
+      ],
+      "return_distribution": {
+        "MomentumStrategy": 0.023478,
+        "MeanReversionStrategy": 0.0
+      },
+      "win_rate_distribution": {
+        "MomentumStrategy": 0.333333,
+        "MeanReversionStrategy": 0.0
+      }
+    }
+  },
+  "ranking_changes": true
+}

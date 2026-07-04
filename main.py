@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-美股研究系统 - 统一入口
+美股研究系统 - 单次研究命令入口（守护服务统一由 Supervisor 管理）
 
 用法:
   python main.py dashboard         看盘
@@ -16,6 +16,7 @@ import argparse
 import subprocess
 import sys
 import json
+import math
 import time
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -507,6 +508,29 @@ def show_doctor(
     return all_ok
 
 
+def _b6_json_safe(value):
+    """将 B6 结果转换为严格 JSON 值，非有限浮点表示为 null。"""
+    if isinstance(value, dict):
+        return {str(key): _b6_json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_b6_json_safe(item) for item in value]
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def _print_b6_result(result: dict) -> None:
+    """以稳定的 JSON 格式输出 B6 内存结果。"""
+    print(json.dumps(
+        _b6_json_safe(result),
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+        allow_nan=False,
+        default=str,
+    ))
+
+
 def main():
     parser = argparse.ArgumentParser(description="📊 美股研究系统 v1.0")
     sub = parser.add_subparsers(dest="command")
@@ -563,14 +587,29 @@ def main():
     # init
     p = sub.add_parser("init", help="初始化系统配置")
 
+    # B6 backtest
+    p = sub.add_parser("backtest", help="运行本地确定性回测")
+    p.add_argument("--symbol", default="AAPL", help="样本股票代码")
+
+    # B6 optimize
+    p = sub.add_parser("optimize", help="运行本地策略参数优化")
+    p.add_argument("--symbol", default="AAPL", help="样本股票代码")
+
     # report
-    p = sub.add_parser("report", help="生成报告")
-    p.add_argument("--daily", action="store_true", help="每日持仓报告")
+    p = sub.add_parser("report", help="生成最新回测报告 (Markdown)")
+    p.add_argument("--daily", action="store_true", help="每日持仓报告 (旧版)")
+    p.add_argument("--symbol", default=None, help="回测标的代码（默认 AAPL）")
     p.add_argument(
         "--portfolio-file",
         default=str(DEFAULT_SCHEMA_PORTFOLIO_FILE),
         help="Schema 1.1 持仓 JSON 文件路径",
     )
+    p.add_argument("--force", action="store_true", help="跳过幂等锁，强制重新生成")
+
+    # B6 full
+    p = sub.add_parser("full", help="运行完整 B1-B5 本地流水线")
+    p.add_argument("symbol_positional", nargs="?", help="样本股票代码（兼容模式）")
+    p.add_argument("--symbol", help="样本股票代码")
 
     # screener
     p = sub.add_parser("screener", help="只读股票筛选")
@@ -686,7 +725,8 @@ def main():
     args = parser.parse_args()
 
     if args.command == "dashboard":
-        show_product_dashboard(args.portfolio_file)
+        from dashboard_service import run_dashboard
+        run_dashboard()
 
     elif args.command == "doctor":
         show_doctor(
@@ -729,11 +769,34 @@ def main():
         print(f"  python main.py portfolio        查看持仓")
         print(f"  python main.py watchlist        观察名单")
 
+    elif args.command == "backtest":
+        from system_controller import SystemController
+
+        controller = SystemController()
+        _print_b6_result(controller.run_backtest(args.symbol))
+
+    elif args.command == "optimize":
+        from system_controller import SystemController
+
+        controller = SystemController()
+        _print_b6_result(controller.run_optimization(args.symbol))
+
     elif args.command == "report":
         if args.daily:
             show_daily_report(args.portfolio_file)
         else:
-            print("请使用: python main.py report --daily")
+            from backtest_report_generator import run_report
+            run_report(
+                symbols=[args.symbol] if args.symbol else None,
+                force=getattr(args, 'force', False),
+            )
+
+    elif args.command == "full":
+        from system_controller import SystemController
+
+        controller = SystemController()
+        symbol = args.symbol or args.symbol_positional or "AAPL"
+        _print_b6_result(controller.run_full_pipeline(symbol))
 
     elif args.command == "screener":
         cmd_args = []

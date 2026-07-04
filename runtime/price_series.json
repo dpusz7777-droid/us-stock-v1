@@ -1,0 +1,902 @@
+[
+  {
+    "cycle_id": "000316",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:04.965302+00:00",
+    "regime": "trending_down",
+    "price": 188.36,
+    "microstructure": {
+      "trend": 0.0,
+      "regime_bias": -0.4,
+      "noise": -0.099529,
+      "noise_std": 0.538552,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000317",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:05.965302+00:00",
+    "regime": "trending_down",
+    "price": 187.08,
+    "microstructure": {
+      "trend": -0.266165,
+      "regime_bias": -0.4,
+      "noise": -0.616268,
+      "noise_std": 1.171647,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000318",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:06.965302+00:00",
+    "regime": "trending_down",
+    "price": 186.23,
+    "microstructure": {
+      "trend": -0.265313,
+      "regime_bias": -0.4,
+      "noise": -0.187469,
+      "noise_std": 0.953189,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000319",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:07.965302+00:00",
+    "regime": "trending_down",
+    "price": 185.51,
+    "microstructure": {
+      "trend": -0.313339,
+      "regime_bias": -0.4,
+      "noise": 0.001863,
+      "noise_std": 0.872375,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000320",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:08.965302+00:00",
+    "regime": "trending_down",
+    "price": 184.73,
+    "microstructure": {
+      "trend": -0.417823,
+      "regime_bias": -0.4,
+      "noise": 0.037314,
+      "noise_std": 1.046984,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000321",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:09.965302+00:00",
+    "regime": "trending_down",
+    "price": 182.44,
+    "microstructure": {
+      "trend": -0.456145,
+      "regime_bias": -0.4,
+      "noise": -1.440627,
+      "noise_std": 1.350875,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000322",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:10.965302+00:00",
+    "regime": "trending_down",
+    "price": 182.78,
+    "microstructure": {
+      "trend": -0.117775,
+      "regime_bias": -0.4,
+      "noise": 0.865508,
+      "noise_std": 0.875858,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000323",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:11.965302+00:00",
+    "regime": "trending_down",
+    "price": 182.61,
+    "microstructure": {
+      "trend": -0.638481,
+      "regime_bias": -0.4,
+      "noise": 0.863046,
+      "noise_std": 1.272301,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000324",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:12.965302+00:00",
+    "regime": "trending_down",
+    "price": 180.29,
+    "microstructure": {
+      "trend": -1.046079,
+      "regime_bias": -0.4,
+      "noise": -0.872038,
+      "noise_std": 1.006676,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000325",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:13.965302+00:00",
+    "regime": "trending_down",
+    "price": 178.98,
+    "microstructure": {
+      "trend": -0.665238,
+      "regime_bias": -0.4,
+      "noise": -0.248318,
+      "noise_std": 0.561211,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000326",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:14.965302+00:00",
+    "regime": "trending_down",
+    "price": 177.2,
+    "microstructure": {
+      "trend": -0.576493,
+      "regime_bias": -0.4,
+      "noise": -0.802566,
+      "noise_std": 1.339098,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000327",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:15.965302+00:00",
+    "regime": "trending_down",
+    "price": 177.59,
+    "microstructure": {
+      "trend": -0.415822,
+      "regime_bias": -0.4,
+      "noise": 1.211015,
+      "noise_std": 0.603041,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000328",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:16.965302+00:00",
+    "regime": "trending_down",
+    "price": 177.7,
+    "microstructure": {
+      "trend": -0.98114,
+      "regime_bias": -0.4,
+      "noise": 1.491619,
+      "noise_std": 1.084377,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000329",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:17.965302+00:00",
+    "regime": "trending_down",
+    "price": 175.25,
+    "microstructure": {
+      "trend": -1.359308,
+      "regime_bias": -0.4,
+      "noise": -0.69397,
+      "noise_std": 1.122748,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000330",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:18.965302+00:00",
+    "regime": "trending_down",
+    "price": 173.16,
+    "microstructure": {
+      "trend": -0.85416,
+      "regime_bias": -0.4,
+      "noise": -0.838883,
+      "noise_std": 1.398913,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000331",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:19.965302+00:00",
+    "regime": "trending_down",
+    "price": 172.93,
+    "microstructure": {
+      "trend": -0.538095,
+      "regime_bias": -0.4,
+      "noise": 0.713755,
+      "noise_std": 0.666818,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000332",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:20.965302+00:00",
+    "regime": "trending_down",
+    "price": 173.36,
+    "microstructure": {
+      "trend": -0.802576,
+      "regime_bias": -0.4,
+      "noise": 1.629519,
+      "noise_std": 1.280865,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000333",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:21.965302+00:00",
+    "regime": "trending_down",
+    "price": 171.99,
+    "microstructure": {
+      "trend": -1.256506,
+      "regime_bias": -0.4,
+      "noise": 0.28416,
+      "noise_std": 0.686008,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000334",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:22.965302+00:00",
+    "regime": "trending_down",
+    "price": 169.68,
+    "microstructure": {
+      "trend": -1.220685,
+      "regime_bias": -0.4,
+      "noise": -0.682425,
+      "noise_std": 1.469174,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000335",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:23.965302+00:00",
+    "regime": "trending_down",
+    "price": 168.37,
+    "microstructure": {
+      "trend": -0.712096,
+      "regime_bias": -0.4,
+      "noise": -0.201215,
+      "noise_std": 1.279132,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000336",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:24.965302+00:00",
+    "regime": "trending_up",
+    "price": 171.97,
+    "microstructure": {
+      "trend": 0.132562,
+      "regime_bias": 0.4,
+      "noise": 3.061516,
+      "noise_std": 1.215178,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000337",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:25.965302+00:00",
+    "regime": "trending_up",
+    "price": 171.96,
+    "microstructure": {
+      "trend": -0.799865,
+      "regime_bias": 0.4,
+      "noise": 0.3908,
+      "noise_std": 0.583648,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000338",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:26.965302+00:00",
+    "regime": "trending_up",
+    "price": 171.68,
+    "microstructure": {
+      "trend": -0.499192,
+      "regime_bias": 0.4,
+      "noise": -0.173007,
+      "noise_std": 0.586228,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000339",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:27.965302+00:00",
+    "regime": "trending_up",
+    "price": 171.81,
+    "microstructure": {
+      "trend": 0.033578,
+      "regime_bias": 0.4,
+      "noise": -0.30302,
+      "noise_std": 0.608941,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000340",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:28.965302+00:00",
+    "regime": "trending_up",
+    "price": 172.6,
+    "microstructure": {
+      "trend": 0.320382,
+      "regime_bias": 0.4,
+      "noise": 0.065089,
+      "noise_std": 0.943077,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000341",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:29.965302+00:00",
+    "regime": "trending_up",
+    "price": 173.36,
+    "microstructure": {
+      "trend": 0.335967,
+      "regime_bias": 0.4,
+      "noise": 0.024788,
+      "noise_std": 1.476608,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000342",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:30.965302+00:00",
+    "regime": "trending_up",
+    "price": 176.79,
+    "microstructure": {
+      "trend": 0.360203,
+      "regime_bias": 0.4,
+      "noise": 2.665523,
+      "noise_std": 1.234591,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000343",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:31.965302+00:00",
+    "regime": "trending_up",
+    "price": 176.66,
+    "microstructure": {
+      "trend": -0.408301,
+      "regime_bias": 0.4,
+      "noise": -0.123105,
+      "noise_std": 0.837641,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000344",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:32.965302+00:00",
+    "regime": "trending_up",
+    "price": 178.51,
+    "microstructure": {
+      "trend": 0.022691,
+      "regime_bias": 0.4,
+      "noise": 1.436343,
+      "noise_std": 0.998111,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000345",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:33.965302+00:00",
+    "regime": "trending_up",
+    "price": 177.91,
+    "microstructure": {
+      "trend": -0.197471,
+      "regime_bias": 0.4,
+      "noise": -0.811245,
+      "noise_std": 1.357211,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000346",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:34.965302+00:00",
+    "regime": "trending_up",
+    "price": 179.42,
+    "microstructure": {
+      "trend": 0.43208,
+      "regime_bias": 0.4,
+      "noise": 0.687145,
+      "noise_std": 1.212364,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000347",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:35.965302+00:00",
+    "regime": "trending_up",
+    "price": 180.45,
+    "microstructure": {
+      "trend": 0.281851,
+      "regime_bias": 0.4,
+      "noise": 0.338903,
+      "noise_std": 0.90466,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000348",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:36.965302+00:00",
+    "regime": "trending_up",
+    "price": 181.15,
+    "microstructure": {
+      "trend": 0.393587,
+      "regime_bias": 0.4,
+      "noise": -0.092611,
+      "noise_std": 1.075631,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000349",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:37.965302+00:00",
+    "regime": "trending_up",
+    "price": 183.15,
+    "microstructure": {
+      "trend": 0.505246,
+      "regime_bias": 0.4,
+      "noise": 1.096958,
+      "noise_std": 0.82735,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000350",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:38.965302+00:00",
+    "regime": "trending_up",
+    "price": 184.31,
+    "microstructure": {
+      "trend": 0.199974,
+      "regime_bias": 0.4,
+      "noise": 0.563115,
+      "noise_std": 0.685804,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000351",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:39.965302+00:00",
+    "regime": "trending_up",
+    "price": 187.42,
+    "microstructure": {
+      "trend": 0.240893,
+      "regime_bias": 0.4,
+      "noise": 2.468411,
+      "noise_std": 1.464998,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000352",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:40.965302+00:00",
+    "regime": "trending_up",
+    "price": 187.55,
+    "microstructure": {
+      "trend": -0.434363,
+      "regime_bias": 0.4,
+      "noise": 0.165054,
+      "noise_std": 1.45882,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000353",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:41.965302+00:00",
+    "regime": "trending_up",
+    "price": 188.49,
+    "microstructure": {
+      "trend": -0.018105,
+      "regime_bias": 0.4,
+      "noise": 0.561166,
+      "noise_std": 0.883777,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000354",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:42.965302+00:00",
+    "regime": "trending_up",
+    "price": 188.7,
+    "microstructure": {
+      "trend": 0.057824,
+      "regime_bias": 0.4,
+      "noise": -0.248872,
+      "noise_std": 0.724864,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000355",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:43.965302+00:00",
+    "regime": "trending_up",
+    "price": 189.62,
+    "microstructure": {
+      "trend": 0.422191,
+      "regime_bias": 0.4,
+      "noise": 0.096249,
+      "noise_std": 1.045812,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000356",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:44.965302+00:00",
+    "regime": "sideways",
+    "price": 191.56,
+    "microstructure": {
+      "trend": 0.215864,
+      "regime_bias": 0.0,
+      "noise": 1.726368,
+      "noise_std": 1.010837,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000357",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:45.965302+00:00",
+    "regime": "sideways",
+    "price": 206.32,
+    "microstructure": {
+      "trend": 15.85169,
+      "regime_bias": 0.0,
+      "noise": -1.094826,
+      "noise_std": 1.078939,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000358",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:46.965302+00:00",
+    "regime": "sideways",
+    "price": 189.43,
+    "microstructure": {
+      "trend": -12.308458,
+      "regime_bias": 0.0,
+      "noise": 0.032573,
+      "noise_std": 0.629944,
+      "shock": -4.618158,
+      "shock_event": true
+    }
+  },
+  {
+    "cycle_id": "000359",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:47.965302+00:00",
+    "regime": "sideways",
+    "price": 173.88,
+    "microstructure": {
+      "trend": -16.730426,
+      "regime_bias": 0.0,
+      "noise": 1.187167,
+      "noise_std": 1.19925,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000360",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:48.965302+00:00",
+    "regime": "sideways",
+    "price": 186.81,
+    "microstructure": {
+      "trend": 12.019518,
+      "regime_bias": 0.0,
+      "noise": 0.910237,
+      "noise_std": 0.925097,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000361",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:49.965302+00:00",
+    "regime": "sideways",
+    "price": 205.91,
+    "microstructure": {
+      "trend": 19.414702,
+      "regime_bias": 0.0,
+      "noise": -0.32229,
+      "noise_std": 0.876136,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000362",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:50.965302+00:00",
+    "regime": "sideways",
+    "price": 194.65,
+    "microstructure": {
+      "trend": -11.997107,
+      "regime_bias": 0.0,
+      "noise": 0.737405,
+      "noise_std": 1.075646,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000363",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:51.965302+00:00",
+    "regime": "sideways",
+    "price": 174.53,
+    "microstructure": {
+      "trend": -20.644831,
+      "regime_bias": 0.0,
+      "noise": 0.532118,
+      "noise_std": 0.699692,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000364",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:52.965302+00:00",
+    "regime": "sideways",
+    "price": 186.23,
+    "microstructure": {
+      "trend": 11.532204,
+      "regime_bias": 0.0,
+      "noise": 0.166254,
+      "noise_std": 0.773282,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000365",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:53.965302+00:00",
+    "regime": "sideways",
+    "price": 205.99,
+    "microstructure": {
+      "trend": 19.850861,
+      "regime_bias": 0.0,
+      "noise": -0.091814,
+      "noise_std": 0.573556,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000366",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:54.965302+00:00",
+    "regime": "sideways",
+    "price": 193.28,
+    "microstructure": {
+      "trend": -12.060924,
+      "regime_bias": 0.0,
+      "noise": -0.652022,
+      "noise_std": 1.229609,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000367",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:55.965302+00:00",
+    "regime": "sideways",
+    "price": 173.28,
+    "microstructure": {
+      "trend": -19.618715,
+      "regime_bias": 0.0,
+      "noise": -0.380739,
+      "noise_std": 1.140374,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000368",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:56.965302+00:00",
+    "regime": "sideways",
+    "price": 187.17,
+    "microstructure": {
+      "trend": 12.473375,
+      "regime_bias": 0.0,
+      "noise": 1.420336,
+      "noise_std": 0.980941,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000369",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:57.965302+00:00",
+    "regime": "sideways",
+    "price": 206.34,
+    "microstructure": {
+      "trend": 19.145592,
+      "regime_bias": 0.0,
+      "noise": 0.024861,
+      "noise_std": 1.412229,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000370",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:58.965302+00:00",
+    "regime": "sideways",
+    "price": 192.62,
+    "microstructure": {
+      "trend": -12.324748,
+      "regime_bias": 0.0,
+      "noise": -1.399772,
+      "noise_std": 1.110058,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000371",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:34:59.965302+00:00",
+    "regime": "sideways",
+    "price": 172.87,
+    "microstructure": {
+      "trend": -19.123858,
+      "regime_bias": 0.0,
+      "noise": -0.628785,
+      "noise_std": 1.018038,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000372",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:35:00.965302+00:00",
+    "regime": "sideways",
+    "price": 185.29,
+    "microstructure": {
+      "trend": 12.783124,
+      "regime_bias": 0.0,
+      "noise": -0.359076,
+      "noise_std": 1.139229,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000373",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:35:01.965302+00:00",
+    "regime": "sideways",
+    "price": 206.37,
+    "microstructure": {
+      "trend": 20.557588,
+      "regime_bias": 0.0,
+      "noise": 0.522966,
+      "noise_std": 1.106369,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000374",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:35:02.965302+00:00",
+    "regime": "sideways",
+    "price": 194.11,
+    "microstructure": {
+      "trend": -12.345327,
+      "regime_bias": 0.0,
+      "noise": 0.089154,
+      "noise_std": 1.199645,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  },
+  {
+    "cycle_id": "000375",
+    "symbol": "AMZN",
+    "timestamp": "2026-07-02T07:35:03.965302+00:00",
+    "regime": "sideways",
+    "price": 174.34,
+    "microstructure": {
+      "trend": -20.245697,
+      "regime_bias": 0.0,
+      "noise": 0.472317,
+      "noise_std": 1.3935,
+      "shock": 0.0,
+      "shock_event": false
+    }
+  }
+]

@@ -1,0 +1,39 @@
+{
+  "best_strategy": "MeanReversionStrategy",
+  "best_return": {
+    "strategy": "MeanReversionStrategy",
+    "value": 0.077034
+  },
+  "best_drawdown": {
+    "strategy": "MeanReversionStrategy",
+    "value": 0.0
+  },
+  "best_sharpe": {
+    "strategy": "MomentumStrategy",
+    "value": 0.188863
+  },
+  "best_alpha": {
+    "strategy": "MeanReversionStrategy",
+    "value": 0.5
+  },
+  "ranking": [
+    {
+      "strategy": "MeanReversionStrategy",
+      "return": 0.077034,
+      "max_drawdown": 0.0,
+      "sharpe": 0.077034,
+      "profit_factor": 7703375297180181.0,
+      "signal_accuracy": 1.0,
+      "strategy_alpha": 0.5
+    },
+    {
+      "strategy": "MomentumStrategy",
+      "return": 0.012515,
+      "max_drawdown": 0.066265,
+      "sharpe": 0.188863,
+      "profit_factor": 2.519088,
+      "signal_accuracy": 0.603448,
+      "strategy_alpha": 0.103448
+    }
+  ]
+}

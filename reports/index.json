@@ -2,6 +2,30 @@
   "schema_version": "1.0",
   "reports": [
     {
+      "date": "2026-07-02",
+      "type": "backtest_latest",
+      "file_path": "reports/backtest-latest.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-07-02",
+      "type": "backtest",
+      "file_path": "reports/backtest-20260702-070321.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-07-02",
+      "type": "backtest",
+      "file_path": "reports/backtest-20260702-082042.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-07-02",
+      "type": "backtest",
+      "file_path": "reports/backtest-20260702-090612.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
       "date": "2026-06-23",
       "type": "evening",
       "file_path": "reports/2026-06-23-evening.md",
@@ -20,12 +44,6 @@
       "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
     },
     {
-      "date": "2026-06-24",
-      "type": "sync",
-      "file_path": "reports/2026-06-24-sync-003022.md",
-      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
-    },
-    {
       "date": "2026-06-23",
       "type": "sync",
       "file_path": "reports/portfolio_migration_report.md",
@@ -35,6 +53,12 @@
       "date": "2026-06-23",
       "type": "sync",
       "file_path": "reports/portfolio_migration_report_old.md",
+      "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
+    },
+    {
+      "date": "2026-06-24",
+      "type": "sync",
+      "file_path": "reports/2026-06-24-sync-003022.md",
       "portfolio_snapshot": "90e62c043e7717af358838594b3a1270b0784a46d7d0ed59d9f0bcc2c96422c0"
     }
   ]

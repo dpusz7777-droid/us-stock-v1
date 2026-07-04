@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""SignalEngine 测试。"""
+"""SignalEngine 测试 — V4 Phase 1."""
 
 from __future__ import annotations
 
@@ -17,10 +17,18 @@ from broker_provider import (
     BrokerPortfolioSnapshot,
     MockBrokerProvider,
 )
+from decision_engine import Decision, DecisionAction, DecisionEngine
 from event_bus import event_bus
 from events import SIGNAL_GENERATED
 from price_provider_v2 import PriceResultV2, PRICE_STATUS_OK
-from signal_engine import SignalEngine, SignalType, Signal, signal_engine
+from signal_engine import (
+    SignalEngine,
+    SignalType,
+    Signal,
+    signal_engine,
+    generate_signal,
+)
+from execution_engine import ExecutionEngine, OrderStatus
 
 
 def _make_price_result(
@@ -72,6 +80,11 @@ def _make_broker_snapshot(
     return BrokerPortfolioSnapshot(account=account, positions=broker_positions)
 
 
+# ======================================================================
+# SignalType
+# ======================================================================
+
+
 class TestSignalType(unittest.TestCase):
     def test_signal_type_values(self) -> None:
         self.assertEqual(SignalType.BUY.value, "BUY")
@@ -83,6 +96,11 @@ class TestSignalType(unittest.TestCase):
 
     def test_signal_type_is_enum(self) -> None:
         self.assertTrue(issubclass(SignalType, Enum))
+
+
+# ======================================================================
+# Signal dataclass
+# ======================================================================
 
 
 class TestSignalDataclass(unittest.TestCase):
@@ -104,6 +122,7 @@ class TestSignalDataclass(unittest.TestCase):
         d = s.to_dict()
         self.assertEqual(d["symbol"], "AAPL")
         self.assertEqual(d["signal_type"], "BUY")
+        self.assertEqual(d["action"], "BUY")  # 兼容字段
         self.assertEqual(d["strength"], 85)
         self.assertEqual(d["confidence"], 0.8)
 
@@ -116,6 +135,146 @@ class TestSignalDataclass(unittest.TestCase):
         for val in [0.0, 0.1, 0.5, 0.99, 1.0]:
             s = Signal(symbol="T", signal_type=SignalType.HOLD, strength=50, confidence=val, reason="test", source="price")
             self.assertEqual(s.confidence, val)
+
+
+# ======================================================================
+# generate_signal — 统一信号函数 (V4 Phase 1)
+# ======================================================================
+
+
+class TestGenerateSignal(unittest.TestCase):
+    """测试 generate_signal 统一信号函数。"""
+
+    def test_volatility_high_returns_reduce(self) -> None:
+        """volatility > 0.03 → REDUCE。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.01,
+            "volatility": 0.04,
+        })
+        self.assertEqual(signal.signal_type, SignalType.REDUCE)
+        self.assertEqual(signal.symbol, "AAPL")
+        self.assertEqual(signal.source, "unified")
+
+    def test_change_pct_positive_returns_buy(self) -> None:
+        """change_pct > 0.02 → BUY。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.03,
+            "volatility": 0.01,
+        })
+        self.assertEqual(signal.signal_type, SignalType.BUY)
+        self.assertEqual(signal.symbol, "AAPL")
+        self.assertEqual(signal.source, "unified")
+
+    def test_change_pct_negative_returns_sell(self) -> None:
+        """change_pct < -0.02 → SELL。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": -0.03,
+            "volatility": 0.01,
+        })
+        self.assertEqual(signal.signal_type, SignalType.SELL)
+        self.assertEqual(signal.symbol, "AAPL")
+        self.assertEqual(signal.source, "unified")
+
+    def test_no_signal_returns_hold(self) -> None:
+        """其他 → HOLD。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.00,
+            "volatility": 0.01,
+        })
+        self.assertEqual(signal.signal_type, SignalType.HOLD)
+        self.assertEqual(signal.source, "unified")
+
+    def test_volatility_takes_priority(self) -> None:
+        """高 volatility 优先于 change_pct。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.03,  # 通常是 BUY
+            "volatility": 0.05,   # 但 volatility 高 → REDUCE
+        })
+        self.assertEqual(signal.signal_type, SignalType.REDUCE)
+
+    def test_symbol_in_output(self) -> None:
+        signal = generate_signal({
+            "symbol": "TSLA",
+            "price": 200.0,
+            "change_pct": 0.01,
+            "volatility": 0.02,
+        })
+        self.assertEqual(signal.symbol, "TSLA")
+
+    def test_timestamp_exists(self) -> None:
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.0,
+            "volatility": 0.0,
+        })
+        self.assertTrue(len(signal.timestamp) > 0)
+
+    def test_default_symbol(self) -> None:
+        """不传 symbol 时默认 UNKNOWN。"""
+        signal = generate_signal({
+            "price": 150.0,
+            "change_pct": 0.0,
+            "volatility": 0.0,
+        })
+        self.assertEqual(signal.symbol, "UNKNOWN")
+
+    def test_volatility_boundary(self) -> None:
+        """volatility=0.03 未超阈值 → 不应 REDUCE。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.0,
+            "volatility": 0.03,
+        })
+        self.assertNotEqual(signal.signal_type, SignalType.REDUCE)
+
+    def test_change_pct_boundary_positive(self) -> None:
+        """change_pct=0.02 未超阈值 → 不应 BUY。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.02,
+            "volatility": 0.01,
+        })
+        self.assertNotEqual(signal.signal_type, SignalType.BUY)
+
+    def test_change_pct_boundary_negative(self) -> None:
+        """change_pct=-0.02 未超阈值 → 不应 SELL。"""
+        signal = generate_signal({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": -0.02,
+            "volatility": 0.01,
+        })
+        self.assertNotEqual(signal.signal_type, SignalType.SELL)
+
+    def test_always_returns_without_none(self) -> None:
+        """generate_signal 永远不返回 None。"""
+        for args in [
+            {"symbol": "A", "price": 100, "change_pct": 0.0, "volatility": 0.0},
+            {"symbol": "A", "price": 100, "change_pct": 0.05, "volatility": 0.01},
+            {"symbol": "A", "price": 100, "change_pct": -0.05, "volatility": 0.01},
+            {"symbol": "A", "price": 100, "change_pct": 0.01, "volatility": 0.05},
+        ]:
+            signal = generate_signal(args)
+            self.assertIsNotNone(signal)
+            self.assertIsInstance(signal, Signal)
+
+
+# ======================================================================
+# SignalEngine — Momentum
+# ======================================================================
 
 
 class TestSignalEngineMomentum(unittest.TestCase):
@@ -151,6 +310,11 @@ class TestSignalEngineMomentum(unittest.TestCase):
         self.assertEqual(len(buys), 0)
 
 
+# ======================================================================
+# SignalEngine — Mean Reversion
+# ======================================================================
+
+
 class TestSignalEngineMeanReversion(unittest.TestCase):
     def setUp(self) -> None:
         self.engine = SignalEngine()
@@ -175,6 +339,11 @@ class TestSignalEngineMeanReversion(unittest.TestCase):
         signals = self.engine.evaluate_with_change_pct("AAPL", Decimal("101"), Decimal("1.0"))
         holds = [s for s in signals if s.signal_type == SignalType.HOLD]
         self.assertTrue(len(holds) > 0)
+
+
+# ======================================================================
+# SignalEngine — Portfolio Exposure
+# ======================================================================
 
 
 class TestSignalEnginePortfolioExposure(unittest.TestCase):
@@ -210,7 +379,6 @@ class TestSignalEnginePortfolioExposure(unittest.TestCase):
         self.assertTrue(len(risk_off) > 0)
 
     def test_no_signals_for_healthy_portfolio(self) -> None:
-        # 6 equal positions, each ~16.7% (< 20% single position threshold)
         snap = _make_broker_snapshot([
             ("A", Decimal("10"), Decimal("10"), Decimal("10"), Decimal("0")),
             ("B", Decimal("10"), Decimal("10"), Decimal("10"), Decimal("0")),
@@ -226,6 +394,11 @@ class TestSignalEnginePortfolioExposure(unittest.TestCase):
         snap = _make_broker_snapshot([])
         signals = self.engine._evaluate_exposure_strategies(snap)
         self.assertEqual(signals, [])
+
+
+# ======================================================================
+# SignalEngine — evaluate (原有)
+# ======================================================================
 
 
 class TestSignalEngineEvaluate(unittest.TestCase):
@@ -267,6 +440,264 @@ class TestSignalEngineEvaluate(unittest.TestCase):
             self.assertGreaterEqual(signals[i].strength, signals[i + 1].strength)
 
 
+# ======================================================================
+# SignalEngine — evaluate_unified (V4 Phase 1)
+# ======================================================================
+
+
+class TestSignalEngineEvaluateUnified(unittest.TestCase):
+    def setUp(self) -> None:
+        self.engine = SignalEngine()
+        event_bus.clear()
+        event_bus.clear_log()
+
+    def test_evaluate_unified_returns_signal(self) -> None:
+        """evaluate_unified 必须返回 Signal 对象。"""
+        signal = self.engine.evaluate_unified({
+            "symbol": "AAPL",
+            "price": 150.0,
+            "change_pct": 0.03,
+            "volatility": 0.01,
+        })
+        self.assertIsInstance(signal, Signal)
+        self.assertIsNotNone(signal)
+
+    def test_evaluate_unified_buy(self) -> None:
+        signal = self.engine.evaluate_unified({
+            "symbol": "AAPL", "price": 150.0,
+            "change_pct": 0.03, "volatility": 0.01,
+        })
+        self.assertEqual(signal.signal_type, SignalType.BUY)
+
+    def test_evaluate_unified_sell(self) -> None:
+        signal = self.engine.evaluate_unified({
+            "symbol": "AAPL", "price": 150.0,
+            "change_pct": -0.03, "volatility": 0.01,
+        })
+        self.assertEqual(signal.signal_type, SignalType.SELL)
+
+    def test_evaluate_unified_reduce(self) -> None:
+        signal = self.engine.evaluate_unified({
+            "symbol": "AAPL", "price": 150.0,
+            "change_pct": 0.01, "volatility": 0.04,
+        })
+        self.assertEqual(signal.signal_type, SignalType.REDUCE)
+
+    def test_evaluate_unified_hold(self) -> None:
+        signal = self.engine.evaluate_unified({
+            "symbol": "AAPL", "price": 150.0,
+            "change_pct": 0.0, "volatility": 0.01,
+        })
+        self.assertEqual(signal.signal_type, SignalType.HOLD)
+
+    def test_evaluate_unified_publishes_event(self) -> None:
+        """evaluate_unified 必须发布 SIGNAL_GENERATED 事件。"""
+        received: list[dict] = []
+        def listener(data: Any) -> None:
+            received.append(data)
+        event_bus.subscribe(SIGNAL_GENERATED, listener)
+        self.engine.evaluate_unified({
+            "symbol": "AAPL", "price": 150.0,
+            "change_pct": 0.03, "volatility": 0.01,
+        })
+        self.assertEqual(len(received), 1)
+        self.assertIn("signal", received[0])
+        self.assertEqual(received[0]["has_portfolio"], True)
+
+    def test_evaluate_unified_never_returns_none(self) -> None:
+        """evaluate_unified 永远不返回 None。"""
+        for data in [
+            {"symbol": "A", "price": 100, "change_pct": 0.0, "volatility": 0.0},
+            {"symbol": "A", "price": 100, "change_pct": 0.05, "volatility": 0.01},
+            {"symbol": "A", "price": 100, "change_pct": -0.05, "volatility": 0.01},
+            {"symbol": "A", "price": 100, "change_pct": 0.01, "volatility": 0.05},
+        ]:
+            signal = self.engine.evaluate_unified(data)
+            self.assertIsNotNone(signal)
+            self.assertIsInstance(signal, Signal)
+
+    def test_evaluate_unified_has_timestamp(self) -> None:
+        signal = self.engine.evaluate_unified({
+            "symbol": "AAPL", "price": 150.0,
+            "change_pct": 0.0, "volatility": 0.0,
+        })
+        self.assertTrue(len(signal.timestamp) > 0)
+
+
+# ======================================================================
+# Signal → Decision → Execution 全链路测试 (V4 Phase 1)
+# ======================================================================
+
+
+class TestSignalToExecutionPipeline(unittest.TestCase):
+    """验证 Signal → Decision → Execution 链路通畅。"""
+
+    def setUp(self) -> None:
+        self.signal_engine = SignalEngine()
+        self.decision_engine = DecisionEngine()
+        self.execution_engine = ExecutionEngine(deterministic=True)
+        event_bus.clear()
+        event_bus.clear_log()
+
+    def test_signal_to_decision_buy(self) -> None:
+        """BUY 信号必须能传递到 Decision（返回 BUY）。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": 0.03,
+                "volatility": 0.01,
+            },
+            decision_engine=self.decision_engine,
+        )
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.action, DecisionAction.BUY)
+
+    def test_signal_to_decision_sell(self) -> None:
+        """SELL 信号必须能传递到 Decision（返回 SELL）。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": -0.03,
+                "volatility": 0.01,
+            },
+            decision_engine=self.decision_engine,
+        )
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.action, DecisionAction.SELL)
+
+    def test_signal_to_decision_reduce(self) -> None:
+        """REDUCE 信号必须能传递到 Decision（返回 REDUCE）。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": 0.01,
+                "volatility": 0.04,
+            },
+            decision_engine=self.decision_engine,
+        )
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.action, DecisionAction.REDUCE)
+
+    def test_signal_to_decision_hold(self) -> None:
+        """HOLD 信号必须能传递到 Decision（返回 HOLD）。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": 0.0,
+                "volatility": 0.01,
+            },
+            decision_engine=self.decision_engine,
+        )
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.action, DecisionAction.HOLD)
+
+    def test_decision_has_required_fields(self) -> None:
+        """Decision 必须包含 symbol / action / confidence / timestamp。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": 0.03,
+                "volatility": 0.01,
+            },
+            decision_engine=self.decision_engine,
+        )
+        self.assertTrue(hasattr(decision, "symbol"))
+        self.assertTrue(hasattr(decision, "action"))
+        self.assertTrue(hasattr(decision, "confidence"))
+        self.assertTrue(hasattr(decision, "timestamp"))
+
+    def test_decision_to_execution_buy(self) -> None:
+        """Decision(BUY) → ExecutionEngine.submit_order 必须返回 FILLED。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": 0.03,
+                "volatility": 0.01,
+            },
+            decision_engine=self.decision_engine,
+        )
+        from decimal import Decimal
+        result = self.execution_engine.submit_order(decision, Decimal("150.00"), Decimal("100"))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status, OrderStatus.FILLED)
+
+    def test_decision_to_execution_sell(self) -> None:
+        """Decision(SELL) → ExecutionEngine.submit_order 必须返回 FILLED。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": -0.03,
+                "volatility": 0.01,
+            },
+            decision_engine=self.decision_engine,
+        )
+        from decimal import Decimal
+        result = self.execution_engine.submit_order(decision, Decimal("150.00"), Decimal("100"))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status, OrderStatus.FILLED)
+
+    def test_decision_to_execution_hold(self) -> None:
+        """Decision(HOLD) → ExecutionEngine.submit_order 必须返回 NO_OP。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": 0.0,
+                "volatility": 0.01,
+            },
+            decision_engine=self.decision_engine,
+        )
+        from decimal import Decimal
+        result = self.execution_engine.submit_order(decision, Decimal("150.00"))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status, OrderStatus.NO_OP)
+
+    def test_decision_to_execution_reduce(self) -> None:
+        """Decision(REDUCE) → ExecutionEngine.submit_order 必须返回 PARTIAL。"""
+        decision = self.signal_engine.evaluate_unified_to_decision(
+            price_data={
+                "symbol": "AAPL",
+                "price": 150.0,
+                "change_pct": 0.01,
+                "volatility": 0.04,
+            },
+            decision_engine=self.decision_engine,
+        )
+        from decimal import Decimal
+        result = self.execution_engine.submit_order(decision, Decimal("150.00"), Decimal("100"))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.status, OrderStatus.PARTIAL)
+
+    def test_full_pipeline_never_returns_none(self) -> None:
+        """全链路中任何环节都不应返回 None。"""
+        for data in [
+            {"symbol": "AAPL", "price": 150.0, "change_pct": 0.03, "volatility": 0.01},
+            {"symbol": "AAPL", "price": 150.0, "change_pct": -0.03, "volatility": 0.01},
+            {"symbol": "AAPL", "price": 150.0, "change_pct": 0.0, "volatility": 0.01},
+            {"symbol": "AAPL", "price": 150.0, "change_pct": 0.01, "volatility": 0.04},
+        ]:
+            decision = self.signal_engine.evaluate_unified_to_decision(
+                price_data=data, decision_engine=self.decision_engine,
+            )
+            self.assertIsNotNone(decision)
+            from decimal import Decimal
+            result = self.execution_engine.submit_order(decision, Decimal(str(data["price"])))
+            self.assertIsNotNone(result)
+            self.assertIsInstance(result.status, OrderStatus)
+
+
+# ======================================================================
+# EventBus Integration
+# ======================================================================
+
+
 class TestEventBusIntegration(unittest.TestCase):
     def setUp(self) -> None:
         event_bus.clear()
@@ -292,6 +723,25 @@ class TestEventBusIntegration(unittest.TestCase):
         self.assertEqual(received[0]["signal"]["symbol"], "AAPL")
         self.assertEqual(received[0]["signal"]["signal_type"], "BUY")
 
+    def test_generate_signal_publishes_event_via_engine(self) -> None:
+        """通过 engine.evaluate_unified 必须发布事件。"""
+        engine = SignalEngine()
+        received: list[dict] = []
+        def listener(data: Any) -> None:
+            received.append(data)
+        event_bus.subscribe(SIGNAL_GENERATED, listener)
+        engine.evaluate_unified({
+            "symbol": "AAPL", "price": 150.0,
+            "change_pct": 0.03, "volatility": 0.01,
+        })
+        self.assertEqual(len(received), 1)
+        self.assertEqual(received[0]["signal"]["signal_type"], "BUY")
+
+
+# ======================================================================
+# 安全约束
+# ======================================================================
+
 
 class TestNoNetworkOrPortfolioModification(unittest.TestCase):
     def test_no_network_imports(self) -> None:
@@ -314,6 +764,11 @@ class TestNoNetworkOrPortfolioModification(unittest.TestCase):
             source = fh.read()
         self.assertNotIn(".write(", source)
         self.assertNotIn("open(", source)
+
+
+# ======================================================================
+# Global Singleton
+# ======================================================================
 
 
 class TestGlobalSingleton(unittest.TestCase):

@@ -1,0 +1,17 @@
+{
+  "equity_curve": [
+    {
+      "cycle_id": "000316",
+      "cash": 100000.0,
+      "position": 0,
+      "equity": 100000.0
+    }
+  ],
+  "final_pnl": 0.0,
+  "metrics": {
+    "total_return": 0.0,
+    "win_rate": 0.0,
+    "max_drawdown": 0.0,
+    "trade_count": 0
+  }
+}
