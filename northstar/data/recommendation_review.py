@@ -194,6 +194,122 @@ def _is_sell_action(action: str) -> bool:
     return action_lower in sell_lower_set or action in sell_exact_set
 
 
+def _is_breakout_action(action: str) -> bool:
+    """判断建议动作是否属于突破类。"""
+    action_lower = action.lower()
+    breakout_set = {"breakout", "break_out", "new_high", "新高", "突破", "追涨"}
+    return action_lower in breakout_set or action in breakout_set
+
+
+# ── v30: 策略标签系统 ──
+
+
+def classify_strategy_type(row: dict) -> str:
+    """只读推导单条建议的策略类型。
+
+    返回：
+        momentum / breakout / mean_reversion / reversal / defensive / unknown
+    """
+    try:
+        action = row.get("action", "").strip() if row.get("action") else ""
+        change_pct = row.get("change_pct")
+        review_status = row.get("review_status", "")
+        is_buy = _is_buy_action(action)
+        is_sell = _is_sell_action(action)
+        is_breakout = _is_breakout_action(action)
+
+        try:
+            cp = float(change_pct) if change_pct is not None else 0.0
+        except (TypeError, ValueError):
+            cp = 0.0
+
+        # 突破策略：breakout 关键词
+        if is_breakout:
+            return "breakout"
+
+        # 反转：卖出后上涨（错过上涨）
+        if is_sell and cp >= 3.0:
+            return "reversal"
+
+        # 防守策略：卖出/回避/减仓
+        if is_sell:
+            return "defensive"
+
+        # 动量/追涨：买入 + 明显上涨（+3%+）
+        if is_buy and cp >= 3.0:
+            return "momentum"
+
+        # 均值回归 / 反转：买入 + 明显下跌（-3%-）
+        if is_buy and cp <= -3.0:
+            return "mean_reversion"
+
+        # 其他买入但涨跌幅不大
+        if is_buy:
+            return "momentum" if cp > 0 else "mean_reversion"
+
+        return "unknown"
+
+    except Exception:
+        return "unknown"
+
+
+# ── v30: 策略统计 ──
+
+
+def build_strategy_summary(review_rows: list[dict]) -> dict:
+    """对复盘结果进行策略维度统计（只读）。
+
+    返回：
+        {
+            "strategies": {
+                "momentum": {"count": int, "win_count": int, "loss_count": int, "win_rate": float|None},
+                ...
+            },
+            "top_strategy": str,
+            "best_strategy": str,
+            "worst_strategy": str,
+        }
+    """
+    from collections import defaultdict
+
+    if not review_rows:
+        return {"strategies": {}, "top_strategy": "unknown", "best_strategy": "unknown", "worst_strategy": "unknown"}
+
+    stats: dict[str, dict] = defaultdict(lambda: {"count": 0, "win_count": 0, "loss_count": 0, "win_rate": None})
+
+    for row in review_rows:
+        st = classify_strategy_type(row)
+        grade = row.get("review_grade", "")
+
+        stats[st]["count"] += 1
+
+        if grade == "有效":
+            stats[st]["win_count"] += 1
+        elif grade == "失效":
+            stats[st]["loss_count"] += 1
+
+    # 计算 win_rate
+    strategy_names = list(stats.keys())
+    for name in strategy_names:
+        s = stats[name]
+        denom = s["win_count"] + s["loss_count"]
+        if denom > 0:
+            s["win_rate"] = round(s["win_count"] / denom * 100, 1)
+
+    # 找 top / best / worst
+    names_with_rates = [(n, s) for n, s in stats.items() if s["win_rate"] is not None and s["count"] > 0]
+    top_strategy = max(names_with_rates, key=lambda x: x[1]["count"])[0] if names_with_rates else "unknown"
+    best_strategy = max(names_with_rates, key=lambda x: x[1]["win_rate"])[0] if names_with_rates else "unknown"
+    worst_strategy = min(names_with_rates, key=lambda x: x[1]["win_rate"])[0] if names_with_rates else "unknown"
+
+    return {
+        "strategies": dict(stats),
+        "top_strategy": top_strategy,
+        "best_strategy": best_strategy,
+        "worst_strategy": worst_strategy,
+    }
+
+
 def classify_recommendation_review_result(row: dict) -> dict:
     """对一条建议复盘结果进行只读分级。
 
