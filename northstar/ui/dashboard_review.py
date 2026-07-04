@@ -637,6 +637,40 @@ def render_recommendation_review_section(
     except Exception:
         pass
 
+    # ── v41: Self-Directed Research System ──
+    try:
+        from northstar.data.recommendation_review import run_self_directed_research_system, build_self_directed_research_report
+        sd_recs = get_all_recommendations_fn()
+        if sd_recs:
+            sds = run_self_directed_research_system(sd_recs)
+            sd_report = build_self_directed_research_report(sd_recs)
+            with st.expander("🧭 Self-Directed Research System", expanded=False):
+                st.caption("**自主研究决策系统**：自动计算研究优先级、生成路线图、制定周计划。")
+                rp = sds.get("research_priorities", [])
+                if rp:
+                    st.markdown("**Research Priorities**")
+                    for p in rp:
+                        st.markdown(f"- Priority {p['priority']}: {p['topic']} — {p['reason']}")
+                else:
+                    st.caption("暂无研究优先级（样本不足）。")
+                rm = sds.get("research_roadmap", [])
+                if rm:
+                    st.markdown("**Research Roadmap**")
+                    for phase in rm:
+                        st.markdown(f"- {phase['phase']}: {phase['focus']} ({phase['cycles']} cycles)")
+                wp = sds.get("weekly_plan", [])
+                if wp:
+                    st.markdown("**Weekly Plan**")
+                    for item in wp:
+                        st.markdown(f"- {item}")
+                conf = sds.get("confidence", 0)
+                st.metric("System Confidence", f"{conf:.0%}")
+                st.caption("自主研究决策仅基于历史数据做规划，不构成投资建议。")
+        else:
+            pass
+    except Exception:
+        pass
+
     # ── v36: Portfolio Intelligence Layer ──
     try:
         from northstar.data.recommendation_review import build_portfolio_intelligence_summary, build_portfolio_rebalance_insight

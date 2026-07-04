@@ -1686,6 +1686,167 @@ def build_autonomous_research_report_v2(review_rows: list[dict]) -> dict:
     }
 
 
+# ── v41: Self-Directed Research System ──
+
+def _compute_priority_score(strategy: str, failure_risk: dict, stability: dict, regime: str) -> float:
+    """计算单个策略的研究优先级分数。"""
+    risk_data = failure_risk.get("strategy_failure_risk", {}).get(strategy, {})
+    risk_score = risk_data.get("risk_score", 0.0)
+
+    stable_data = stability.get("strategy_stability", {}).get(strategy, {})
+    stable_score = stable_data.get("stability_score", 50) / 100
+
+    # failure_risk * 0.4
+    failure_component = risk_score * 0.4
+    # instability (1 - stability) * 0.3
+    instability_component = (1 - stable_score) * 0.3
+    # regime_mismatch * 0.2
+    mismatch_map = {"momentum": ["bear", "sideways"], "breakout": ["bear", "sideways"], "mean_reversion": ["bull", "high_volatility"]}
+    bad_regimes = mismatch_map.get(strategy, [])
+    mismatch_penalty = 0.2 if regime in bad_regimes else 0.0
+    # exposure_weight * 0.1 (default 0.5)
+    exposure_component = 0.5 * 0.1
+
+    return round(failure_component + instability_component + mismatch_penalty + exposure_component, 2)
+
+
+def _generate_weekly_plan(priorities: list[dict]) -> list[str]:
+    """基于 priorities 生成周计划。"""
+    plan = []
+    if priorities:
+        plan.append(f"Analyze top {min(2, len(priorities))} failure strategies")
+        plan.append("Evaluate regime mismatch patterns")
+        plan.append("Validate stability across markets")
+    else:
+        plan.append("Monitor current regime conditions")
+        plan.append("Continue data collection for strategy analysis")
+    return plan[:5]
+
+
+def run_self_directed_research_system(review_rows: list[dict]) -> dict:
+    """自主研究决策系统（只读、规则驱动）。
+
+    自动计算研究优先级、生成路线图、制定周计划。
+    """
+    result = {"research_priorities": [], "research_roadmap": [], "weekly_plan": [], "confidence": 0.0}
+    if not review_rows or len(review_rows) < 4:
+        return result
+
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    regime = classify_market_regime(review_rows)
+
+    # 收集所有策略
+    strategies = set(list(failure_risk.get("strategy_failure_risk", {}).keys()) + list(stability.get("strategy_stability", {}).keys()))
+    if not strategies:
+        return result
+
+    # 计算优先级
+    priorities = []
+    for s in strategies:
+        score = _compute_priority_score(s, failure_risk, stability, regime)
+        reasons = []
+        risk_data = failure_risk.get("strategy_failure_risk", {}).get(s, {})
+        if risk_data.get("risk_score", 0) >= 0.3:
+            reasons.append(f"highest failure risk")
+        stable_data = stability.get("strategy_stability", {}).get(s, {})
+        if stable_data.get("stability_score", 50) < 30:
+            reasons.append(f"low stability")
+        mismatch_map = {"momentum": ["bear", "sideways"], "breakout": ["bear", "sideways"], "mean_reversion": ["bull", "high_volatility"]}
+        if regime in mismatch_map.get(s, []):
+            reasons.append(f"regime mismatch")
+        if not reasons:
+            reasons.append("insufficient data")
+        priorities.append({
+            "priority": 0,
+            "topic": f"{s} in {regime}",
+            "reason": " + ".join(reasons),
+            "_score": score,
+        })
+
+    # 按 score 降序排序
+    priorities.sort(key=lambda x: -x["_score"])
+    for i, p in enumerate(priorities):
+        p["priority"] = i + 1
+        del p["_score"]
+    result["research_priorities"] = priorities[:5]
+
+    # 路线图
+    roadmap = []
+    hr_strategies = [p["topic"] for p in priorities if any(r in p.get("reason", "") for r in ["failure", "risk"])]
+    if hr_strategies:
+        roadmap.append({
+            "phase": "deep_dive",
+            "focus": "high risk strategies",
+            "cycles": 3,
+        })
+    stable_strategies = [p["topic"] for p in priorities if "insufficient" in p.get("reason", "")]
+    if stable_strategies or len(priorities) > len(hr_strategies):
+        roadmap.append({
+            "phase": "validation",
+            "focus": "stable strategies",
+            "cycles": 2,
+        })
+    if transition.get("is_transitioning"):
+        roadmap.append({
+            "phase": "monitoring",
+            "focus": "regime transition impact",
+            "cycles": 1,
+        })
+    if not roadmap:
+        roadmap.append({
+            "phase": "initiation",
+            "focus": "strategy data collection",
+            "cycles": 1,
+        })
+    result["research_roadmap"] = roadmap
+
+    # 周计划
+    result["weekly_plan"] = _generate_weekly_plan(priorities)
+
+    # Confidence
+    n_priorities = len(priorities)
+    n_roadmap = len(roadmap)
+    data_conf = min(len(review_rows) / 12, 1.0) * 0.3
+    priority_conf = min(n_priorities / 3, 1.0) * 0.4
+    roadmap_conf = min(n_roadmap / 3, 1.0) * 0.3
+    result["confidence"] = round(data_conf + priority_conf + roadmap_conf, 2)
+
+    return result
+
+
+def build_self_directed_research_report(review_rows: list[dict]) -> dict:
+    """自主研究决策摘要报告（只读）。"""
+    system = run_self_directed_research_system(review_rows)
+    priorities = system.get("research_priorities", [])
+    summary = []
+    strategic_focus = []
+
+    if priorities:
+        top_reason = priorities[0].get("reason", "")
+        if "failure" in top_reason or "risk" in top_reason:
+            summary.append("System prioritizes high failure-risk strategies")
+        if "regime mismatch" in top_reason:
+            summary.append("Regime mismatch is dominant risk factor")
+        if "low stability" in top_reason:
+            summary.append("Strategy stability requires attention")
+    if not summary:
+        summary.append("Insufficient data for strategic summary")
+
+    for p in priorities[:2]:
+        if "fail" in p.get("reason", "") or "risk" in p.get("reason", ""):
+            strategic_focus.append(f"Reduce exposure to {p['topic']}")
+    if not strategic_focus:
+        strategic_focus.append("Focus research on regime-adaptive strategies")
+
+    return {
+        "executive_summary": summary[:3],
+        "strategic_focus": strategic_focus[:3],
+        "system_maturity": "self-directed",
+    }
+
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
