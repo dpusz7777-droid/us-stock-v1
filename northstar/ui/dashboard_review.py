@@ -671,6 +671,42 @@ def render_recommendation_review_section(
     except Exception:
         pass
 
+    # ── v42: Self-Optimizing Research System ──
+    try:
+        from northstar.data.recommendation_review import run_self_optimizing_research_system, build_self_optimizing_report
+        so_recs = get_all_recommendations_fn()
+        if so_recs:
+            so = run_self_optimizing_research_system(so_recs)
+            so_report = build_self_optimizing_report(so_recs)
+            with st.expander("🧠 Self-Optimizing Research System", expanded=False):
+                st.caption("**自优化研究系统**：自动优化规则、调整评分权重、修正 hypothesis 偏差。")
+                ro = so.get("rule_optimizations", [])
+                if ro:
+                    st.markdown("**Rule Optimizations**")
+                    for opt in ro:
+                        st.markdown(f"- {opt['rule']}: {opt['before']} → {opt['after']} ({opt['reason']})")
+                sa = so.get("scoring_adjustments", [])
+                if sa:
+                    st.markdown("**Scoring Adjustments**")
+                    for adj in sa:
+                        st.markdown(f"- {adj['component']}: {adj['change']} — {adj['reason']}")
+                hr = so.get("hypothesis_refinements", [])
+                if hr:
+                    st.markdown("**Hypothesis Refinements**")
+                    for h in hr:
+                        st.markdown(f"- {h}")
+                sh = so.get("system_health", {})
+                if sh:
+                    st.markdown("**System Health**")
+                    st.metric("Stability", sh.get("stability", "unknown").upper())
+                    st.metric("Bias Level", sh.get("bias_level", "unknown").upper())
+                    st.metric("Health Confidence", f'{sh.get("confidence", 0):.0%}')
+                st.caption("自优化系统仅基于历史数据做规则优化，不构成投资建议。")
+        else:
+            pass
+    except Exception:
+        pass
+
     # ── v36: Portfolio Intelligence Layer ──
     try:
         from northstar.data.recommendation_review import build_portfolio_intelligence_summary, build_portfolio_rebalance_insight

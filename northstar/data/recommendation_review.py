@@ -1847,6 +1847,222 @@ def build_self_directed_research_report(review_rows: list[dict]) -> dict:
     }
 
 
+# ── v42: Self-Optimizing Research System ──
+
+def _compute_rule_optimizations(review_rows: list[dict]) -> list[dict]:
+    """基于持续失败模式优化规则权重。"""
+    optimizations = []
+    if not review_rows or len(review_rows) < 6:
+        return optimizations
+
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    regime = classify_market_regime(review_rows)
+
+    mismatch_map = {"momentum": ["bear", "sideways"], "breakout": ["bear", "sideways"], "mean_reversion": ["bull", "high_volatility"]}
+
+    # 检查每个策略的规则
+    baseline_penalties = {"momentum": 0.20, "breakout": 0.15, "mean_reversion": 0.10, "defensive": 0.05}
+    for st, base in baseline_penalties.items():
+        risk_data = failure_risk.get("strategy_failure_risk", {}).get(st, {})
+        risk_score = risk_data.get("risk_score", 0.0)
+        degradation = risk_data.get("degradation", 0.0)
+        bad_regimes = mismatch_map.get(st, [])
+        has_mismatch = regime in bad_regimes
+        is_transitioning = transition.get("is_transitioning", False)
+
+        # 如果风险高 + 不匹配 → 增加 penalty
+        if risk_score >= 0.3 and has_mismatch:
+            new_penalty = min(base + risk_score * 0.3, 0.5)
+            if new_penalty > base:
+                optimizations.append({
+                    "rule": f"{st}_{regime}_penalty",
+                    "before": round(base, 2),
+                    "after": round(new_penalty, 2),
+                    "reason": f"consistent failure in {regime} regime detected (risk={risk_score})",
+                })
+        # 如果 degradation 严重 → 调整
+        if degradation > 0.1 and is_transitioning:
+            adjusted = min(base + degradation * 0.5, 0.4)
+            if adjusted > base:
+                optimizations.append({
+                    "rule": f"{st}_degradation_adjustment",
+                    "before": round(base, 2),
+                    "after": round(adjusted, 2),
+                    "reason": f"performance degradation detected (degradation={degradation})",
+                })
+
+    if not optimizations:
+        optimizations.append({
+            "rule": "default_penalty",
+            "before": 0.10,
+            "after": 0.10,
+            "reason": "insufficient data for optimization",
+        })
+    return optimizations[:5]
+
+
+def _compute_scoring_adjustments(review_rows: list[dict]) -> list[dict]:
+    """基于系统表现自动调整评分权重。"""
+    adjustments = []
+    if not review_rows or len(review_rows) < 6:
+        return adjustments
+
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    stability = build_strategy_stability_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+
+    # 检查 failure_risk 是否有预测偏差
+    hr = failure_risk.get("high_risk_strategies", [])
+    if hr:
+        avg_risk = sum(failure_risk["strategy_failure_risk"].get(s, {}).get("risk_score", 0) for s in hr) / len(hr)
+        if avg_risk > 0.4:
+            adjustments.append({
+                "component": "failure_risk_weight",
+                "change": "+0.05",
+                "reason": "failure risk underweighted in v41 analysis",
+            })
+
+    # 检查稳定性是否需要调整权重
+    strategy_stability = stability.get("strategy_stability", {})
+    if strategy_stability:
+        low_stable = sum(1 for s in strategy_stability.values() if s.get("stability_score", 50) < 30)
+        if low_stable >= 2:
+            adjustments.append({
+                "component": "stability_weight",
+                "change": "+0.03",
+                "reason": "multiple strategies show low stability",
+            })
+
+    # 检查 transition 影响
+    if transition.get("is_transitioning"):
+        adjustments.append({
+            "component": "regime_mismatch_weight",
+            "change": "+0.04",
+            "reason": f"regime transition active (strength={transition['transition_strength']})",
+        })
+
+    if not adjustments:
+        adjustments.append({
+            "component": "no_adjustment",
+            "change": "0.00",
+            "reason": "all weights currently balanced",
+        })
+    return adjustments
+
+
+def _compute_hypothesis_refinements(review_rows: list[dict]) -> list[str]:
+    """基于假设偏差自动优化 hypothesis 类型。"""
+    refinements = []
+    if not review_rows or len(review_rows) < 6:
+        return refinements
+
+    stability = build_strategy_stability_summary(review_rows)
+    transition = detect_market_regime_transitions(review_rows)
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+
+    volatility_found = False
+    regime_sensitivity = False
+
+    # 检查 volatility 因素
+    strategy_stability = stability.get("strategy_stability", {})
+    if strategy_stability:
+        low_count = sum(1 for s in strategy_stability.values() if s.get("stability_score", 50) < 40)
+        if low_count >= 2:
+            refinements.append("add volatility amplification factor")
+            volatility_found = True
+
+    # 检查 regime sensitivity
+    hr = failure_risk.get("high_risk_strategies", [])
+    if len(hr) >= 2:
+        refinements.append("increase regime sensitivity weight")
+        regime_sensitivity = True
+
+    if transition.get("is_transitioning"):
+        refinements.append("add transition risk multiplier")
+
+    if not refinements:
+        refinements.append("current hypothesis types sufficient")
+    return refinements
+
+
+def run_self_optimizing_research_system(review_rows: list[dict]) -> dict:
+    """自优化研究系统（只读、规则驱动）。
+
+    自动优化 research rules、调整评分权重、修正 hypothesis 偏差。
+    """
+    result = {"rule_optimizations": [], "scoring_adjustments": [], "hypothesis_refinements": [], "system_health": {"stability": "unknown", "confidence": 0.0, "bias_level": "unknown"}}
+    if not review_rows or len(review_rows) < 6:
+        result["system_health"] = {"stability": "unknown", "confidence": 0.0, "bias_level": "low"}
+        return result
+
+    # Rule Optimizations
+    result["rule_optimizations"] = _compute_rule_optimizations(review_rows)
+
+    # Scoring Adjustments
+    result["scoring_adjustments"] = _compute_scoring_adjustments(review_rows)
+
+    # Hypothesis Refinements
+    result["hypothesis_refinements"] = _compute_hypothesis_refinements(review_rows)
+
+    # System Health
+    n_optimizations = len([o for o in result["rule_optimizations"] if o.get("after", 0) > o.get("before", 0)])
+    n_adjustments = len([a for a in result["scoring_adjustments"] if a.get("change", "0") != "0.00"])
+    n_refinements = len(result["hypothesis_refinements"])
+
+    system_stability = "stable"
+    if n_optimizations >= 2 or n_adjustments >= 2:
+        system_stability = "improving"
+    elif n_optimizations >= 1 or n_adjustments >= 1:
+        system_stability = "slightly_improving"
+
+    bias_level = "low"
+    if n_optimizations >= 2 and n_refinements >= 2:
+        bias_level = "medium"
+    elif n_optimizations >= 3:
+        bias_level = "high"
+
+    confidence = min(0.5 + n_optimizations * 0.08 + n_adjustments * 0.06 + n_refinements * 0.04, 0.95)
+    result["system_health"] = {
+        "stability": system_stability,
+        "confidence": round(confidence, 2),
+        "bias_level": bias_level,
+    }
+
+    return result
+
+
+def build_self_optimizing_report(review_rows: list[dict]) -> dict:
+    """自优化研究摘要报告（只读）。"""
+    system = run_self_optimizing_research_system(review_rows)
+    opt_summary = []
+    sys_changes = []
+
+    for o in system.get("rule_optimizations", []):
+        if o.get("after", 0) > o.get("before", 0):
+            opt_summary.append(f"System improves {o['rule']} weighting (before={o['before']}, after={o['after']})")
+
+    for a in system.get("scoring_adjustments", []):
+        if a.get("change", "0") != "0.00":
+            opt_summary.append(f"Failure risk importance increased by {a['change']}")
+
+    if not opt_summary:
+        opt_summary.append("No optimization needed")
+
+    sh = system.get("system_health", {})
+    if sh.get("stability") in ("improving", "slightly_improving"):
+        sys_changes.append("Rebalance scoring toward regime mismatch detection")
+        sys_changes.append("Increase weight of stability under volatility")
+    else:
+        sys_changes.append("Maintain current weighting strategy")
+
+    return {
+        "optimization_summary": opt_summary[:5],
+        "recommended_system_changes": sys_changes[:3],
+        "system_state": "self-optimizing",
+    }
+
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
