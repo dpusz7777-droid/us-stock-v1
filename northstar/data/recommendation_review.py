@@ -1121,6 +1121,157 @@ def build_research_report(review_rows: list[dict]) -> dict:
     }
 
 
+# ── v38: Self-Evolving Research Loop ──
+
+def _detect_strategy_failure_patterns(review_rows: list[dict]) -> list[dict]:
+    """检测策略在特定 regime 中的长期失败模式。"""
+    matrix = build_strategy_regime_matrix(review_rows)
+    patterns = []
+    for rg, strategies in matrix.items():
+        for st, stats in strategies.items():
+            if stats.get("win_rate") is not None and stats["count"] >= 2:
+                if stats["win_rate"] < 40:
+                    patterns.append({
+                        "strategy": st,
+                        "regime": rg,
+                        "win_rate": stats["win_rate"],
+                        "count": stats["count"],
+                        "penalty_adjustment": round((40 - stats["win_rate"]) / 200, 2),
+                    })
+    return patterns
+
+
+def _detect_recurring_evidence(research_insights: list[dict]) -> list[str]:
+    """检测重复出现的 evidence 模式，生成新 hypothesis 类型。"""
+    new_types = []
+    topics = []
+    for h in research_insights:
+        if h.get("support", 0) >= 0.5:
+            h_name = h.get("hypothesis", "").lower()
+            if "momentum" in h_name:
+                topics.append("regime_dependent_breakdown")
+            if "defensive" in h_name:
+                topics.append("volatility_amplified_failure")
+            if "breakout" in h_name:
+                topics.append("regime_dependent_breakdown")
+            if "mean_reversion" in h_name:
+                topics.append("volatility_regime_shift_risk")
+    from collections import Counter
+    topic_counts = Counter(topics)
+    for topic, count in topic_counts.items():
+        if count >= 1:
+            new_types.append(topic)
+    return list(set(new_types))
+
+
+def _consolidate_insights(research_insights: list[dict], failure_patterns: list[dict]) -> list[str]:
+    """合并多个 hypothesis 为系统级洞察。"""
+    consolidated = []
+    regime_dominated = False
+    volatility_amplifier = False
+    for h in research_insights:
+        if h.get("support", 0) >= 0.5:
+            h_name = h.get("hypothesis", "").lower()
+            if "momentum" in h_name or "breakout" in h_name:
+                regime_dominated = True
+            if "mean_reversion" in h_name:
+                volatility_amplifier = True
+    if failure_patterns:
+        regime_penalties = sum(1 for p in failure_patterns if p.get("penalty_adjustment", 0) > 0.05)
+        if regime_penalties >= 2:
+            regime_dominated = True
+    if regime_dominated:
+        consolidated.append("strategy performance is regime-dominated")
+    if volatility_amplifier:
+        consolidated.append("volatility is secondary amplifier")
+    if not consolidated:
+        consolidated.append("insufficient evidence for system-level insights")
+    return consolidated
+
+
+def run_self_evolving_research_loop(review_rows: list[dict]) -> dict:
+    """自演化研究系统（只读、规则驱动）。
+
+    基于 v37 输出自动：
+    - 演化规则权重
+    - 扩展 hypothesis 类型
+    - 合并系统洞察
+    - 评估模型状态
+    """
+    result = {"evolved_rules": [], "new_hypothesis_types": [], "system_insights": [], "confidence": 0.0}
+    if not review_rows or len(review_rows) < 4:
+        return result
+
+    research = run_autonomous_strategy_research(review_rows)
+    failure_patterns = _detect_strategy_failure_patterns(review_rows)
+
+    # ── Rule Evolution ──
+    evolved_rules = []
+    for p in failure_patterns:
+        evolved_rules.append({
+            "rule_name": f"{p['strategy']}_{p['regime']}_penalty",
+            "adjustment": -p["penalty_adjustment"],
+            "reason": f"{p['strategy']} consistently fails in {p['regime']} (win_rate {p['win_rate']}%)",
+        })
+    result["evolved_rules"] = evolved_rules
+
+    # ── Hypothesis Expansion ──
+    new_types = _detect_recurring_evidence(research.get("insights", []))
+    result["new_hypothesis_types"] = new_types
+
+    # ── Insight Consolidation ──
+    insights = _consolidate_insights(research.get("insights", []), failure_patterns)
+    result["system_insights"] = insights
+
+    # ── Model State ──
+    n_penalties = len([r for r in evolved_rules if r["adjustment"] < 0])
+    n_new = len(new_types)
+    if n_penalties >= 2 or n_new >= 2:
+        model_state = "evolving"
+    elif n_penalties >= 1 or n_new >= 1:
+        model_state = "unstable"
+    else:
+        model_state = "stable"
+    result["model_state"] = model_state
+
+    # ── Confidence ──
+    data_confidence = min(len(review_rows) / 10, 1.0) * 0.3
+    rule_confidence = min(len(evolved_rules) / 3, 1.0) * 0.3
+    insight_confidence = min(len(insights) / 2, 1.0) * 0.4
+    overall = round(data_confidence + rule_confidence + insight_confidence, 2)
+    result["confidence"] = overall
+
+    return result
+
+
+def build_evolution_report(review_rows: list[dict]) -> dict:
+    """生成演化摘要报告（只读）。"""
+    loop = run_self_evolving_research_loop(review_rows)
+    rule_changes = []
+    system_recs = []
+    for r in loop.get("evolved_rules", []):
+        adj = r["adjustment"]
+        if adj < 0:
+            action = "Increase penalty" if adj <= -0.05 else "Adjust penalty"
+            rule_changes.append(f"{action} for {r['rule_name']} ({adj})")
+    for si in loop.get("system_insights", []):
+        if "regime-dominated" in si:
+            system_recs.append("Shift portfolio toward defensive strategies")
+            system_recs.append("Reduce regime-sensitive strategies exposure")
+        if "volatility" in si:
+            system_recs.append("Monitor volatility as risk amplifier")
+            system_recs.append("Adjust strategy weights based on volatility regime")
+    if not rule_changes:
+        rule_changes.append("No rule changes recommended")
+    if not system_recs:
+        system_recs.append("Continue monitoring for emerging patterns")
+    return {
+        "rule_changes": rule_changes,
+        "system_recommendations": system_recs,
+        "model_state": loop.get("model_state", "stable"),
+    }
+
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:

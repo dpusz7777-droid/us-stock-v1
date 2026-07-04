@@ -511,6 +511,52 @@ def render_recommendation_review_section(
     except Exception:
         pass
 
+    # ── v38: Self-Evolving Research System ──
+    try:
+        from northstar.data.recommendation_review import run_self_evolving_research_loop, build_evolution_report
+        ev_recs = get_all_recommendations_fn()
+        if ev_recs:
+            loop = run_self_evolving_research_loop(ev_recs)
+            ev_report = build_evolution_report(ev_recs)
+            with st.expander("🧬 Self-Evolving Research System", expanded=False):
+                st.caption("**自演化研究系统**：基于历史表现自动演化规则、扩展假设、合并系统洞察。")
+                er = loop.get("evolved_rules", [])
+                if er:
+                    st.markdown("**Evolved Rules**")
+                    for rule in er:
+                        st.markdown(f"- {rule['rule_name']}: {rule['reason']} (adj: {rule['adjustment']})")
+                else:
+                    st.caption("暂未发现规则演化（样本不足或无稳定失败模式）。")
+                nh = loop.get("new_hypothesis_types", [])
+                if nh:
+                    st.markdown("**New Hypothesis Types**")
+                    for ht in nh:
+                        st.markdown(f"- {ht}")
+                si = loop.get("system_insights", [])
+                if si:
+                    st.markdown("**System Insights**")
+                    for s in si:
+                        st.markdown(f"- {s}")
+                ms = ev_report.get("model_state", "stable")
+                st.metric("Model State", ms.upper())
+                rc = ev_report.get("rule_changes", [])
+                if rc:
+                    st.markdown("**Rule Changes**")
+                    for c in rc:
+                        st.markdown(f"- {c}")
+                sr = ev_report.get("system_recommendations", [])
+                if sr:
+                    st.markdown("**System Recommendations**")
+                    for r in sr:
+                        st.markdown(f"- {r}")
+                conf = loop.get("confidence", 0)
+                st.metric("Evolution Confidence", f"{conf:.0%}")
+                st.caption("自演化系统仅基于历史数据做规则分析，不构成投资建议。")
+        else:
+            pass
+    except Exception:
+        pass
+
     # ── v36: Portfolio Intelligence Layer ──
     try:
         from northstar.data.recommendation_review import build_portfolio_intelligence_summary, build_portfolio_rebalance_insight
