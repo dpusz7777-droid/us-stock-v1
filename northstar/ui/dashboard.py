@@ -548,6 +548,7 @@ def run() -> None:
 
             win_rate_str = _pct_str(stats.get("win_rate"))
             avg_str = _pct_str(stats.get("avg_change_pct"))
+            avg_dir_str = _pct_str(stats.get("avg_normalized_change_pct"))
 
             # Row 1: counts
             col_s1, col_s2, col_s3, col_s4 = st.columns(4)
@@ -556,19 +557,35 @@ def run() -> None:
             col_s3.metric("待复盘", stats.get("pending_count", 0))
             col_s4.metric("到期未复盘", stats.get("due_count", 0))
 
-            # Row 2: win rate, avg change, best, worst
-            col_s5, col_s6, col_s7, col_s8 = st.columns(4)
-            col_s5.metric("胜率", win_rate_str)
-            col_s6.metric("平均涨跌幅", avg_str)
+            # Row 2: win rate, avg change, avg direction, best, worst
+            col_s5, col_s6, col_s7 = st.columns(3)
+            col_s5.metric("胜率（按方向）", win_rate_str)
+            col_s6.metric("平均原始涨跌幅", avg_str)
+            col_s7.metric("平均方向涨跌幅", avg_dir_str)
+
             best = stats.get("best_review")
             worst = stats.get("worst_review")
 
-            best_html = _review_item_html(best, "最佳")
-            worst_html = _review_item_html(worst, "最差")
+            def _norm_item_html(item: dict | None, label: str) -> str:
+                if item is None:
+                    return f'<span style="color:#94A3B8;font-size:11px;">暂无数据</span>'
+                symbol = item.get("symbol", "?")
+                norm_cp = item.get("normalized_change_pct", 0)
+                date = (item.get("created_at", "") or "")[:10]
+                color = "gn" if norm_cp > 0 else ("rd" if norm_cp < 0 else "")
+                return (
+                    f'<span style="font-weight:600;color:#2563EB;font-size:12px;">{symbol}</span> '
+                    f'<span style="color:#94A3B8;font-size:10px;">{date}</span> '
+                    f'<span class="{color}" style="font-size:11px;">{format_change_pct(norm_cp)}</span> '
+                    f'<span style="color:#94A3B8;font-size:9px;">(方向收益)</span>'
+                )
+
+            best_html = _norm_item_html(best, "最佳")
+            worst_html = _norm_item_html(worst, "最差")
             st.markdown(
                 f'<div class="cd" style="padding:10px 14px;">'
-                f'<div class="rw"><span class="lb">最佳建议</span><span>{best_html}</span></div>'
-                f'<div class="rw" style="border-bottom:none;"><span class="lb">最差建议</span><span>{worst_html}</span></div>'
+                f'<div class="rw"><span class="lb">最佳建议（按方向收益）</span><span>{best_html}</span></div>'
+                f'<div class="rw" style="border-bottom:none;"><span class="lb">最差建议（按方向收益）</span><span>{worst_html}</span></div>'
                 f'</div>',
                 unsafe_allow_html=True,
             )

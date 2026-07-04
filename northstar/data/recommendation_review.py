@@ -251,8 +251,12 @@ def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
     pending_count = 0
     win_count = 0
     loss_count = 0
+    flat_count = 0
+    neutral_count = 0
+    unknown_count = 0
     change_pcts: list[float] = []
-    reviewed_recs_with_pct: list[dict] = []
+    normalized_change_pcts: list[float] = []
+    reviewed_recs_with_norm: list[dict] = []
     open_recs_for_due: list[dict] = []
 
     for rec in recommendations:
@@ -262,32 +266,37 @@ def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
         if status == "reviewed":
             reviewed_count += 1
 
-            if isinstance(review_result, dict):
-                rv_status = review_result.get("review_status", "")
-                change_pct = review_result.get("change_pct")
+            # 使用 evaluate_recommendation_outcome 统一判断
+            outcome = evaluate_recommendation_outcome(rec)
+            o = outcome["outcome"]
 
-                if rv_status == "上涨":
-                    win_count += 1
-                elif rv_status == "下跌":
-                    loss_count += 1
+            if o == "win":
+                win_count += 1
+            elif o == "loss":
+                loss_count += 1
+            elif o == "flat":
+                flat_count += 1
+            elif o == "neutral":
+                neutral_count += 1
+            else:
+                unknown_count += 1
 
-                if change_pct is not None:
-                    try:
-                        val = float(change_pct)
-                        change_pcts.append(val)
-                        reviewed_recs_with_pct.append({
-                            "symbol": rec.get("symbol", "?"),
-                            "created_at": rec.get("created_at", ""),
-                            "change_pct": val,
-                            "review_status": rv_status,
-                        })
-                    except (TypeError, ValueError):
-                        pass
+            if outcome["raw_change_pct"] is not None:
+                change_pcts.append(outcome["raw_change_pct"])
+            if outcome["normalized_change_pct"] is not None:
+                norm_val = outcome["normalized_change_pct"]
+                normalized_change_pcts.append(norm_val)
+                reviewed_recs_with_norm.append({
+                    "symbol": rec.get("symbol", "?"),
+                    "created_at": rec.get("created_at", ""),
+                    "normalized_change_pct": norm_val,
+                    "outcome": o,
+                })
         else:
             pending_count += 1
             open_recs_for_due.append(rec)
 
-    # Compute due_count: open records that have passed review_after_days
+    # Compute due_count
     due_count = 0
     for rec in open_recs_for_due:
         review_after = rec.get("review_after_days", 7)
@@ -299,22 +308,28 @@ def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
                 if days >= review_after:
                     due_count += 1
 
-    # Compute avg_change_pct
+    # Compute avg_change_pct (raw)
     avg_change_pct: float | None = None
     if change_pcts:
         avg_change_pct = round(sum(change_pcts) / len(change_pcts), 2)
 
-    # Compute win_rate (上涨 / 已复盘)
-    win_rate: float | None = None
-    if reviewed_count > 0:
-        win_rate = round(win_count / reviewed_count * 100, 2)
+    # Compute avg_normalized_change_pct
+    avg_normalized_change_pct: float | None = None
+    if normalized_change_pcts:
+        avg_normalized_change_pct = round(sum(normalized_change_pcts) / len(normalized_change_pcts), 2)
 
-    # Find best and worst review
+    # Compute win_rate = win / (win + loss + flat)
+    win_denom = win_count + loss_count + flat_count
+    win_rate: float | None = None
+    if win_denom > 0:
+        win_rate = round(win_count / win_denom * 100, 2)
+
+    # Find best and worst review based on normalized_change_pct
     best_review: dict | None = None
     worst_review: dict | None = None
-    if reviewed_recs_with_pct:
-        best_review = max(reviewed_recs_with_pct, key=lambda x: x["change_pct"])
-        worst_review = min(reviewed_recs_with_pct, key=lambda x: x["change_pct"])
+    if reviewed_recs_with_norm:
+        best_review = max(reviewed_recs_with_norm, key=lambda x: x["normalized_change_pct"])
+        worst_review = min(reviewed_recs_with_norm, key=lambda x: x["normalized_change_pct"])
 
     return {
         "total_count": total_count,
@@ -323,8 +338,12 @@ def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
         "due_count": due_count,
         "win_count": win_count,
         "loss_count": loss_count,
+        "flat_count": flat_count,
+        "neutral_count": neutral_count,
+        "unknown_count": unknown_count,
         "win_rate": win_rate,
         "avg_change_pct": avg_change_pct,
+        "avg_normalized_change_pct": avg_normalized_change_pct,
         "best_review": best_review,
         "worst_review": worst_review,
     }
@@ -364,7 +383,11 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
         "pending_count": 0,
         "win_count": 0,
         "loss_count": 0,
-        "change_pcts": [],
+        "flat_count": 0,
+        "neutral_count": 0,
+        "unknown_count": 0,
+        "raw_change_pcts": [],
+        "normalized_change_pcts": [],
         "dates": [],
         "latest_status_raw": None,
     })
@@ -374,7 +397,6 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
         if not symbol:
             symbol = "UNKNOWN"
         status = rec.get("status", "open")
-        review_result = rec.get("review_result")
         created_at = rec.get("created_at", "")
         g = groups[symbol]
         g["total_count"] += 1
@@ -385,23 +407,30 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
         if status == "reviewed":
             g["reviewed_count"] += 1
 
+            # 使用 evaluate_recommendation_outcome 统一判断
+            outcome = evaluate_recommendation_outcome(rec)
+            o = outcome["outcome"]
+
+            if o == "win":
+                g["win_count"] += 1
+            elif o == "loss":
+                g["loss_count"] += 1
+            elif o == "flat":
+                g["flat_count"] += 1
+            elif o == "neutral":
+                g["neutral_count"] += 1
+            else:
+                g["unknown_count"] += 1
+
+            if outcome["raw_change_pct"] is not None:
+                g["raw_change_pcts"].append(outcome["raw_change_pct"])
+            if outcome["normalized_change_pct"] is not None:
+                g["normalized_change_pcts"].append(outcome["normalized_change_pct"])
+
+            # latest_status from review_result
+            review_result = rec.get("review_result")
             if isinstance(review_result, dict):
-                rv_status = review_result.get("review_status", "")
-                change_pct = review_result.get("change_pct")
-
-                if rv_status == "上涨":
-                    g["win_count"] += 1
-                elif rv_status == "下跌":
-                    g["loss_count"] += 1
-
-                if change_pct is not None:
-                    try:
-                        val = float(change_pct)
-                        g["change_pcts"].append(val)
-                    except (TypeError, ValueError):
-                        pass
-
-                g["latest_status_raw"] = rv_status
+                g["latest_status_raw"] = review_result.get("review_status", "")
             elif isinstance(review_result, str):
                 g["latest_status_raw"] = review_result
             else:
@@ -411,22 +440,32 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
 
     result_rows = []
     for symbol, g in sorted(groups.items()):
-        reviewed = g["reviewed_count"]
 
-        # Win rate
+        # Win rate = win / (win + loss + flat)
+        denom = g["win_count"] + g["loss_count"] + g["flat_count"]
         win_rate: float | None = None
-        if reviewed > 0:
-            win_rate = round(g["win_count"] / reviewed * 100, 2)
+        if denom > 0:
+            win_rate = round(g["win_count"] / denom * 100, 2)
 
-        # Average change_pct
+        # Average raw change_pct
         avg_change_pct: float | None = None
         best_change_pct: float | None = None
         worst_change_pct: float | None = None
-        if g["change_pcts"]:
-            vals = g["change_pcts"]
+        if g["raw_change_pcts"]:
+            vals = g["raw_change_pcts"]
             avg_change_pct = round(sum(vals) / len(vals), 2)
             best_change_pct = round(max(vals), 2)
             worst_change_pct = round(min(vals), 2)
+
+        # Average normalized change_pct
+        avg_normalized_change_pct: float | None = None
+        best_normalized_change_pct: float | None = None
+        worst_normalized_change_pct: float | None = None
+        if g["normalized_change_pcts"]:
+            vals = g["normalized_change_pcts"]
+            avg_normalized_change_pct = round(sum(vals) / len(vals), 2)
+            best_normalized_change_pct = round(max(vals), 2)
+            worst_normalized_change_pct = round(min(vals), 2)
 
         # Latest date
         latest_date: str | None = None
@@ -436,14 +475,20 @@ def get_recommendation_symbol_stats(recommendations: list[dict]) -> list[dict]:
         result_rows.append({
             "symbol": symbol,
             "total_count": g["total_count"],
-            "reviewed_count": reviewed,
+            "reviewed_count": g["reviewed_count"],
             "pending_count": g["pending_count"],
             "win_count": g["win_count"],
             "loss_count": g["loss_count"],
+            "flat_count": g["flat_count"],
+            "neutral_count": g["neutral_count"],
+            "unknown_count": g["unknown_count"],
             "win_rate": win_rate,
             "avg_change_pct": avg_change_pct,
             "best_change_pct": best_change_pct,
             "worst_change_pct": worst_change_pct,
+            "avg_normalized_change_pct": avg_normalized_change_pct,
+            "best_normalized_change_pct": best_normalized_change_pct,
+            "worst_normalized_change_pct": worst_normalized_change_pct,
             "latest_date": latest_date,
             "latest_status": g["latest_status_raw"],
         })
