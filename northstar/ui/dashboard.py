@@ -302,7 +302,7 @@ def run() -> None:
     )
 
     try:
-        from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct
+        from northstar.data.recommendation_review import review_recommendations, format_change, format_change_pct, classify_recommendation_review_result
         from northstar.data.recommendation_store import update_recommendation_review, get_all_recommendations
 
         try:
@@ -377,8 +377,50 @@ def run() -> None:
                     unsafe_allow_html=True,
                 )
             else:
-                # ── 每条记录展示 ──
+                # ── 复盘决策看板 ──
+                st.markdown('<div class="mt" style="margin-top:16px;">🎯 复盘决策看板</div>', unsafe_allow_html=True)
+                st.caption(
+                    "**复盘决策看板**：基于 ±3% 阈值对每条建议进行只读分级。"
+                    "「有效」表示建议方向正确，「失效」表示建议方向错误。"
+                    "有效率仅用于历史建议验证，不代表未来收益。"
+                )
+                grade_counts = {"有效": 0, "待观察": 0, "失效": 0, "数据不足": 0}
+                for gr in filtered:
+                    g = classify_recommendation_review_result(gr)
+                    grade_counts[g["review_grade"]] = grade_counts.get(g["review_grade"], 0) + 1
+                total_graded = sum(grade_counts.values())
+                effective = grade_counts.get("有效", 0)
+                invalid = grade_counts.get("失效", 0)
+                eff_denom = effective + invalid
+                eff_rate = f"{effective / eff_denom * 100:.1f}%" if eff_denom > 0 else "暂无足够样本"
+
+                gc1, gc2, gc3, gc4, gc5 = st.columns(5)
+                gc1.metric("建议总数", total_graded)
+                gc2.metric("✅ 有效", grade_counts.get("有效", 0))
+                gc3.metric("⏳ 待观察", grade_counts.get("待观察", 0))
+                gc4.metric("❌ 失效", grade_counts.get("失效", 0))
+                gc5.metric("📊 有效率", eff_rate)
+                st.caption("有效率 = 有效 / (有效 + 失效)，数据不足和待观察不计入分母。仅用于历史建议验证，不代表未来收益。")
+
+                # ── 每条记录展示（含分级） ──
                 for r in filtered:
+                    # ── 计算分级 ──
+                    grade_result = classify_recommendation_review_result(r)
+                    grade_label = grade_result["review_grade"]
+                    grade_reason = grade_result["review_grade_reason"]
+                    grade_score = grade_result["review_grade_score"]
+                    if grade_label == "有效":
+                        grade_color = "gn"
+                        grade_icon = "✅"
+                    elif grade_label == "失效":
+                        grade_color = "rd"
+                        grade_icon = "❌"
+                    elif grade_label == "待观察":
+                        grade_color = "am"
+                        grade_icon = "⏳"
+                    else:
+                        grade_color = ""
+                        grade_icon = "⚠️"
                     rec_id = r.get("id", "")
                     act = r.get("action", "—")
                     act_color = {
@@ -407,6 +449,9 @@ def run() -> None:
                     orig_record = next((rec for rec in all_recs if rec.get("id") == rec_id), None)
                     already_reviewed = orig_record is not None and orig_record.get("status") == "reviewed"
 
+                    # ── 分级标签 ──
+                    grade_tag = f'<span class="{grade_color}" style="font-weight:600;font-size:10px;">{grade_icon} {grade_label}</span>'
+
                     if already_reviewed:
                         # 已复盘记录：显示复盘状态
                         orig_result = orig_record.get("review_result", {})
@@ -428,6 +473,7 @@ def run() -> None:
                             f'<span class="sb {act_color}">{act}</span>'
                             f'<span class="stk">{symbol}</span>'
                             f'<span class="srs">'
+                            f'{grade_tag} · '
                             f'建议价 {entry_price_str} → 当前 {current_price_str} · '
                             f'涨跌 <span class="{change_color}">{change_str}</span> · '
                             f'<span class="{change_pct_color}">{change_pct_str}</span> · '
@@ -445,7 +491,7 @@ def run() -> None:
                                 f'<div class="sg">'
                                 f'<span class="sb {act_color}">{act}</span>'
                                 f'<span class="stk">{symbol}</span>'
-                                f'<span class="srs" style="color:#B45309;">⚠️ {status}</span>'
+                                f'<span class="srs" style="color:#B45309;">{grade_tag} ⚠️ {status}</span>'
                                 f'<span class="fts">{ts}</span>'
                                 f'</div>',
                                 unsafe_allow_html=True,
@@ -455,7 +501,7 @@ def run() -> None:
                                 f'<div class="sg">'
                                 f'<span class="sb {act_color}">{act}</span>'
                                 f'<span class="stk">{symbol}</span>'
-                                f'<span class="srs">建议价 {entry_price_str} · 当前价 {current_price_str} · 涨跌 {change_str} · {status}</span>'
+                                f'<span class="srs">{grade_tag} · 建议价 {entry_price_str} · 当前价 {current_price_str} · 涨跌 {change_str} · {status}</span>'
                                 f'<span class="fts">{ts}</span>'
                                 f'</div>',
                                 unsafe_allow_html=True,
@@ -465,7 +511,7 @@ def run() -> None:
                                 f'<div class="sg">'
                                 f'<span class="sb {act_color}">{act}</span>'
                                 f'<span class="stk">{symbol}</span>'
-                                f'<span class="srs">建议价 {entry_price_str} → 当前 {current_price_str} · '
+                                f'<span class="srs">{grade_tag} · 建议价 {entry_price_str} → 当前 {current_price_str} · '
                                 f'涨跌 <span class="{change_color}">{change_str}</span> · '
                                 f'<span class="{change_pct_color}">{change_pct_str}</span> · '
                                 f'{days_str} · {due_tag} · {status}</span>'

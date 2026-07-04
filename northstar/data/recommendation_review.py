@@ -178,6 +178,154 @@ def review_recommendations(recommendations: list[dict[str, Any]]) -> list[dict[s
     return results
 
 
+def classify_recommendation_review_result(row: dict) -> dict:
+    """对一条建议复盘结果进行只读分级。
+
+    参数：
+        row: review_recommendations 返回的单条记录
+
+    返回：
+        {
+            "review_grade": str,        有效 / 待观察 / 失效 / 数据不足
+            "review_grade_reason": str,  一句话原因
+            "review_grade_score": int,   100 / 60 / 20 / 0
+        }
+
+    分级规则（简单、透明、可解释）：
+        - 数据不足：缺少 action / symbol / recommendation_price / current_price / change_pct
+        - 有效：
+            - 买入类建议 (BUY) 且 change_pct >= +3%
+            - 卖出/回避类建议 (SELL) 且 change_pct <= -3%
+            - 注意：SELL 建议下跌是正确判断，所以 change_pct <= -3% 时判为有效
+        - 失效：
+            - 买入类建议 (BUY) 且 change_pct <= -3%
+            - 卖出/回避类建议 (SELL) 且 change_pct >= +3%
+        - 待观察：
+            - 数据完整但涨跌幅在 -3% < x < +3%
+            - 或动作类型无法明确归类但数据完整
+
+    安全原则：
+        - 只读，不写回原始建议文件
+        - 任何异常不会抛到上层
+    """
+    try:
+        # ── 检查必要字段 ──
+        action = row.get("action", "").strip() if row.get("action") else ""
+        symbol = row.get("symbol", "").strip() if row.get("symbol") else ""
+        entry_price = row.get("price")
+        current_price = row.get("current_price")
+        change_pct = row.get("change_pct")
+
+        # 数据不足检查
+        missing = []
+        if not action:
+            missing.append("缺少建议动作")
+        if not symbol:
+            missing.append("缺少股票代码")
+        if entry_price is None or entry_price == 0:
+            missing.append("缺少建议价格")
+        if current_price is None:
+            missing.append("缺少当前价格(价格获取失败)")
+        if change_pct is None:
+            missing.append("缺少涨跌幅(无法计算收益率)")
+
+        if missing:
+            return {
+                "review_grade": "数据不足",
+                "review_grade_reason": "；".join(missing),
+                "review_grade_score": 0,
+            }
+
+        # ── 识别动作类型 ──
+        action_lower = action.lower()
+        action_display = action  # 保留原始中文/英文
+
+        # 买入类（预期上涨才正确）
+        is_buy = action_lower in ("买入", "加仓", "补仓", "看多", "做多", "buy", "add", "accumulate", "bullish", "watch_buy", "strong_buy") or action in ("买入", "加仓", "补仓", "看多", "做多")
+
+        # 卖出类（预期下跌才正确）
+        is_sell = action_lower in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空", "sell", "reduce", "exit", "bearish", "avoid") or action in ("卖出", "减仓", "清仓", "止盈", "止损", "看空", "做空")
+
+        # 持有/观察类（中性，不判断有效/失效）
+        is_neutral = (not is_buy and not is_sell)
+
+        # ── 判断涨跌幅阈值 ──
+        try:
+            cp = float(change_pct)
+        except (TypeError, ValueError):
+            return {
+                "review_grade": "数据不足",
+                "review_grade_reason": "涨跌幅格式异常，无法计算",
+                "review_grade_score": 0,
+            }
+
+        THRESHOLD = 3.0  # ±3% 阈值
+
+        # ── 中性动作 → 待观察 ──
+        if is_neutral:
+            return {
+                "review_grade": "待观察",
+                "review_grade_reason": f"建议动作为「{action_display}」，属于中性/观察类，不做有效/失效判断",
+                "review_grade_score": 60,
+            }
+
+        # ── 买入类建议 ──
+        if is_buy:
+            if cp >= THRESHOLD:
+                return {
+                    "review_grade": "有效",
+                    "review_grade_reason": f"买入建议后上涨 {cp:+.2f}%，超过 +3% 阈值",
+                    "review_grade_score": 100,
+                }
+            elif cp <= -THRESHOLD:
+                return {
+                    "review_grade": "失效",
+                    "review_grade_reason": f"买入建议后下跌 {cp:.2f}%，超过 -3% 阈值",
+                    "review_grade_score": 20,
+                }
+            else:
+                return {
+                    "review_grade": "待观察",
+                    "review_grade_reason": f"买入建议后涨跌幅 {cp:+.2f}%，在 ±3% 范围内，暂不判断",
+                    "review_grade_score": 60,
+                }
+
+        # ── 卖出类建议 ──
+        if is_sell:
+            if cp <= -THRESHOLD:
+                return {
+                    "review_grade": "有效",
+                    "review_grade_reason": f"卖出建议后下跌 {cp:.2f}%，超过 -3% 阈值（下跌=正确判断）",
+                    "review_grade_score": 100,
+                }
+            elif cp >= THRESHOLD:
+                return {
+                    "review_grade": "失效",
+                    "review_grade_reason": f"卖出建议后上涨 {cp:+.2f}%，超过 +3% 阈值（上涨=错误判断）",
+                    "review_grade_score": 20,
+                }
+            else:
+                return {
+                    "review_grade": "待观察",
+                    "review_grade_reason": f"卖出建议后涨跌幅 {cp:+.2f}%，在 ±3% 范围内，暂不判断",
+                    "review_grade_score": 60,
+                }
+
+        # ── 兜底 ──
+        return {
+            "review_grade": "待观察",
+            "review_grade_reason": "无法确定动作类型，暂不判断",
+            "review_grade_score": 60,
+        }
+
+    except Exception:
+        return {
+            "review_grade": "数据不足",
+            "review_grade_reason": "分级计算异常",
+            "review_grade_score": 0,
+        }
+
+
 def format_change_pct(value: float | None) -> str:
     """格式化涨跌幅显示。
 
