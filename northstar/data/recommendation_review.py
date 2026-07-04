@@ -544,6 +544,56 @@ def build_recommendation_review_quality_explanation(review_rows:list[dict])->dic
         return {"quality_level":"一般","main_issue":"样本仍需积累","explanation":f"当前 {es} 条可判断样本，有效率 {rate:.1f}%，可以参考但结论还不够稳定。","next_action":"继续积累建议和复盘快照，等样本增多后再做判断。","warning_flags":["样本仍需积累"]}
     except Exception: return {"quality_level":"暂无足够样本","main_issue":"质量分析异常","explanation":"分析复盘质量时出现异常，请确认建议数据格式正确。","next_action":"检查建议数据格式，确保字段完整。","warning_flags":["质量分析异常"]}
 
+# ── v32: Strategy × Market Regime 矩阵 ──
+
+def build_strategy_regime_matrix(review_rows: list[dict]) -> dict:
+    """构建 Strategy × Market Regime 交叉矩阵（只读）。
+
+    返回：
+        dict: regime → strategy → {count, win_count, loss_count, win_rate, avg_return}
+    """
+    from collections import defaultdict
+    matrix: dict = defaultdict(lambda: defaultdict(lambda: {"count":0,"win_count":0,"loss_count":0,"win_rate":None,"avg_return":0.0}))
+    for row in review_rows:
+        st = classify_strategy_type(row)
+        rg = classify_market_regime(review_rows)  # 整体 regime
+        grade = row.get("review_grade","")
+        cp = row.get("change_pct")
+        try: cpv = float(cp) if cp is not None else None
+        except (TypeError, ValueError): cpv = None
+        matrix[rg][st]["count"] += 1
+        if grade == "有效": matrix[rg][st]["win_count"] += 1
+        elif grade == "失效": matrix[rg][st]["loss_count"] += 1
+        if cpv is not None:
+            matrix[rg][st]["avg_return"] += cpv if matrix[rg][st]["count"] <= 1 else 0  # simplified
+    for rg in list(matrix.keys()):
+        for st in list(matrix[rg].keys()):
+            s = matrix[rg][st]
+            denom = s["win_count"] + s["loss_count"]
+            if denom > 0: s["win_rate"] = round(s["win_count"]/denom*100, 1)
+            if s["count"] > 0 and s["avg_return"] != 0.0: s["avg_return"] = round(s["avg_return"]/s["count"], 2)
+    return {k: dict(v) for k, v in matrix.items()}
+
+def build_strategy_regime_insight(review_rows: list[dict]) -> dict:
+    """从矩阵中提取洞察（只读）。"""
+    from collections import defaultdict
+    matrix = build_strategy_regime_matrix(review_rows)
+    pairs = []
+    for rg, strategies in matrix.items():
+        for st, stats in strategies.items():
+            if stats["win_rate"] is not None and stats["count"] > 0:
+                pairs.append({"regime":rg,"strategy":st,"win_rate":stats["win_rate"],"avg_return":stats["avg_return"],"count":stats["count"]})
+    pairs.sort(key=lambda x: -x["win_rate"])
+    best_pairs = pairs[:3] if len(pairs) >= 3 else pairs
+    worst_pairs = list(reversed(pairs[-3:])) if len(pairs) >= 3 else list(reversed(pairs))
+    strategy_rates = defaultdict(lambda: {"count":0,"total_wr":0.0})
+    for p in pairs:
+        strategy_rates[p["strategy"]]["count"] += 1
+        strategy_rates[p["strategy"]]["total_wr"] += p["win_rate"]
+    global_best = max(strategy_rates, key=lambda k: strategy_rates[k]["total_wr"]/strategy_rates[k]["count"]) if strategy_rates else "unknown"
+    global_worst = min(strategy_rates, key=lambda k: strategy_rates[k]["total_wr"]/strategy_rates[k]["count"]) if strategy_rates else "unknown"
+    return {"best_pairs":best_pairs,"worst_pairs":worst_pairs,"global_best_strategy":global_best,"global_worst_strategy":global_worst}
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
