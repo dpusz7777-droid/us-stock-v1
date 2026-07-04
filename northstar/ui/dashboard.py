@@ -764,7 +764,32 @@ def run() -> None:
                         a_stats = get_recommendation_action_stats(snap_recs)
                         h_stats = get_recommendation_horizon_stats(snap_recs)
                         sumry = generate_recommendation_review_summary(o_stats, s_stats, a_stats, h_stats)
-                        save_recommendation_review_snapshot(o_stats, s_stats, a_stats, h_stats, sumry)
+                        # ── v16：计算分级统计并保存到快照 ──
+                        from northstar.data.recommendation_review import classify_recommendation_review_result
+                        from northstar.data.recommendation_store import get_all_recommendations as _grade_recs
+                        grade_recs = _grade_recs()
+                        if grade_recs:
+                            from northstar.data.recommendation_review import review_recommendations
+                            review_rows = review_recommendations(grade_recs)
+                            grade_counts = {"有效": 0, "待观察": 0, "失效": 0, "数据不足": 0}
+                            for gr in review_rows:
+                                g_res = classify_recommendation_review_result(gr)
+                                grade_counts[g_res["review_grade"]] = grade_counts.get(g_res["review_grade"], 0) + 1
+                            v = grade_counts.get("有效", 0)
+                            i = grade_counts.get("失效", 0)
+                            sample = v + i
+                            er = round(v / sample * 100, 1) if sample > 0 else None
+                            grade_stats = {
+                                "grade_valid_count": v,
+                                "grade_watch_count": grade_counts.get("待观察", 0),
+                                "grade_invalid_count": i,
+                                "grade_insufficient_count": grade_counts.get("数据不足", 0),
+                                "grade_effective_rate": er,
+                                "grade_sample_count": sample,
+                            }
+                        else:
+                            grade_stats = None
+                        save_recommendation_review_snapshot(o_stats, s_stats, a_stats, h_stats, sumry, grade_stats)
                         st.success("已保存当前复盘快照")
                         st.rerun()
                     else:
@@ -859,6 +884,43 @@ def run() -> None:
             df_ec["evaluable_count"] = pd.to_numeric(df_ec["evaluable_count"], errors="coerce")
             st.line_chart(df_ec, height=200)
 
+            # ── v16: 分级趋势 ──
+            st.subheader("📊 建议分级趋势")
+            st.caption(
+                "**分级趋势**：基于每次快照的分级统计绘制。"
+                "「有效」指建议方向正确，「失效」指方向错误。"
+                "分级趋势用于观察系统历史建议质量是否改善，不代表未来收益。"
+            )
+
+            # Check if grade data exists (compatible with old snapshots)
+            has_grade_data = any(t.get("grade_valid_count") is not None for t in trend_data)
+            if has_grade_data:
+                # E. Valid count trend
+                df_valid = df_trend[["display_time", "grade_valid_count"]].copy()
+                df_valid = df_valid.set_index("display_time")
+                df_valid["grade_valid_count"] = pd.to_numeric(df_valid["grade_valid_count"], errors="coerce")
+                st.caption("有效建议数量趋势")
+                st.line_chart(df_valid, height=150)
+
+                # F. Invalid count trend
+                df_invalid = df_trend[["display_time", "grade_invalid_count"]].copy()
+                df_invalid = df_invalid.set_index("display_time")
+                df_invalid["grade_invalid_count"] = pd.to_numeric(df_invalid["grade_invalid_count"], errors="coerce")
+                st.caption("失效建议数量趋势")
+                st.line_chart(df_invalid, height=150)
+
+                # G. Effective rate trend
+                df_er = df_trend[["display_time", "grade_effective_rate"]].copy()
+                df_er = df_er.set_index("display_time")
+                df_er["grade_effective_rate"] = pd.to_numeric(df_er["grade_effective_rate"], errors="coerce")
+                st.caption("有效率趋势")
+                st.line_chart(df_er, height=150)
+            else:
+                st.markdown(
+                    '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">旧快照尚未包含分级数据 —— 保存新的快照后，分级趋势将自动生成</div>',
+                    unsafe_allow_html=True,
+                )
+
             # D. Trend table
             st.subheader("趋势明细")
             def _trend_pct(v):
@@ -871,6 +933,11 @@ def run() -> None:
                     return "暂无数据"
                 return f"{v:.2f}%"
 
+            def _trend_int(v):
+                if v is None:
+                    return "—"
+                return v
+
             trend_rows = []
             for t in trend_data:
                 trend_rows.append({
@@ -880,6 +947,9 @@ def run() -> None:
                     "可判断样本": t.get("evaluable_count", 0),
                     "样本可信度": t.get("confidence_label", ""),
                     "摘要结论": (t.get("headline") or "")[:30] or "—",
+                    "✅有效": _trend_int(t.get("grade_valid_count")),
+                    "❌失效": _trend_int(t.get("grade_invalid_count")),
+                    "📊有效率": _trend_rate(t.get("grade_effective_rate")),
                 })
 
             df_tab = pd.DataFrame(trend_rows)

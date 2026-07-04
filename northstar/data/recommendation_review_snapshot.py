@@ -63,12 +63,64 @@ def load_recommendation_review_snapshots() -> list[dict]:
     return _read_raw()
 
 
+def _compute_grade_stats_from_overall(overall_stats: dict) -> dict:
+    """从 overall_stats 中计算建议复盘分级统计（只读）。
+
+    返回值兼容旧快照：旧快照没有这些字段时显示为 None / 0。
+
+    返回：
+        {
+            "grade_valid_count": int,
+            "grade_watch_count": int,
+            "grade_invalid_count": int,
+            "grade_insufficient_count": int,
+            "grade_effective_rate": float | None,  有效/(有效+失效)
+            "grade_sample_count": int,             有效+失效（分母）
+        }
+    """
+    # 这些字段从 overall_stats 中获取，如果不存在则返回默认值
+    # 注意：overall_stats 目前不直接存储分级计数，
+    # 但 win_count / loss_count / flat_count 可以近似参考。
+    # 为了兼容，如果 overall_stats 中已有我们新增的字段则直接使用
+    valid = overall_stats.get("grade_valid_count")
+    watch = overall_stats.get("grade_watch_count")
+    invalid = overall_stats.get("grade_invalid_count")
+    insufficient = overall_stats.get("grade_insufficient_count")
+
+    # 如果新增字段还不存在（旧系统），返回空值，让快照记录 None
+    # 这样旧快照不会崩溃，新快照会记录实际值
+    if valid is None:
+        return {
+            "grade_valid_count": None,
+            "grade_watch_count": None,
+            "grade_invalid_count": None,
+            "grade_insufficient_count": None,
+            "grade_effective_rate": None,
+            "grade_sample_count": 0,
+        }
+
+    sample_count = (valid or 0) + (invalid or 0)
+    effective_rate = None
+    if sample_count > 0:
+        effective_rate = round((valid or 0) / sample_count * 100, 1)
+
+    return {
+        "grade_valid_count": valid or 0,
+        "grade_watch_count": watch or 0,
+        "grade_invalid_count": invalid or 0,
+        "grade_insufficient_count": insufficient or 0,
+        "grade_effective_rate": effective_rate,
+        "grade_sample_count": sample_count,
+    }
+
+
 def save_recommendation_review_snapshot(
     overall_stats: dict,
     symbol_stats: list[dict],
     action_stats: list[dict],
     horizon_stats: list[dict],
     summary: dict | None = None,
+    grade_stats: dict | None = None,
 ) -> dict:
     """保存一条新复盘快照。
 
@@ -78,6 +130,7 @@ def save_recommendation_review_snapshot(
         action_stats: get_recommendation_action_stats 返回的 list
         horizon_stats: get_recommendation_horizon_stats 返回的 list
         summary: generate_recommendation_review_summary 返回的 dict（可选）
+        grade_stats: 建议复盘分级统计 dict（v16 新增，可选，向下兼容）
 
     返回：
         新保存的快照对象 dict
@@ -122,6 +175,9 @@ def save_recommendation_review_snapshot(
         )
         top_horizons = eligible_hor[:5]
 
+    # ── 分级统计（v16 新增，向下兼容） ──
+    grade_stats = _compute_grade_stats_from_overall(overall_stats)
+
     snapshot = {
         "snapshot_id": snapshot_id,
         "created_at": created_at,
@@ -130,6 +186,7 @@ def save_recommendation_review_snapshot(
         "top_symbols": top_symbols,
         "top_actions": top_actions,
         "top_horizons": top_horizons,
+        "grade_stats": grade_stats,
     }
 
     snapshots = _read_raw()
@@ -160,7 +217,9 @@ def get_recommendation_review_snapshot_trend(limit: int = 30) -> list[dict]:
 
     每条包含：
         created_at, display_time, win_rate, avg_normalized_change_pct,
-        evaluable_count, confidence_level, confidence_label, headline
+        evaluable_count, confidence_level, confidence_label, headline,
+        grade_valid_count, grade_watch_count, grade_invalid_count,
+        grade_insufficient_count, grade_effective_rate, grade_sample_count
 
     参数：
         limit: 最多读取的快照数量
@@ -184,6 +243,7 @@ def get_recommendation_review_snapshot_trend(limit: int = 30) -> list[dict]:
         overall = snap.get("overall", {}) or {}
         summary = snap.get("summary", {}) or {}
         created_at = snap.get("created_at", "") or ""
+        grade_stats = snap.get("grade_stats", {}) or {}
 
         # Format display_time
         display_time = created_at
@@ -205,6 +265,13 @@ def get_recommendation_review_snapshot_trend(limit: int = 30) -> list[dict]:
             "confidence_level": overall.get("confidence_level", ""),
             "confidence_label": overall.get("confidence_label", ""),
             "headline": summary.get("headline", ""),
+            # ── v16 分级趋势字段（兼容旧快照，缺字段时 None/0） ──
+            "grade_valid_count": grade_stats.get("grade_valid_count"),
+            "grade_watch_count": grade_stats.get("grade_watch_count"),
+            "grade_invalid_count": grade_stats.get("grade_invalid_count"),
+            "grade_insufficient_count": grade_stats.get("grade_insufficient_count"),
+            "grade_effective_rate": grade_stats.get("grade_effective_rate"),
+            "grade_sample_count": grade_stats.get("grade_sample_count", 0),
         })
 
     return trend_data
