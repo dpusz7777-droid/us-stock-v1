@@ -63,25 +63,21 @@ def load_recommendation_review_snapshots() -> list[dict]:
     return _read_raw()
 
 
-def _compute_grade_stats_from_overall(overall_stats: dict) -> dict:
-    """从 overall_stats 中计算建议复盘分级统计（只读）。
+def compute_grade_stats_from_overall(overall_stats: dict) -> dict:
+    """（公开版本）从 overall_stats 中计算建议复盘分级统计（只读）。
 
     返回值兼容旧快照：旧快照没有这些字段时显示为 None / 0。
 
     返回：
         {
-            "grade_valid_count": int,
-            "grade_watch_count": int,
-            "grade_invalid_count": int,
-            "grade_insufficient_count": int,
+            "grade_valid_count": int | None,
+            "grade_watch_count": int | None,
+            "grade_invalid_count": int | None,
+            "grade_insufficient_count": int | None,
             "grade_effective_rate": float | None,  有效/(有效+失效)
             "grade_sample_count": int,             有效+失效（分母）
         }
     """
-    # 这些字段从 overall_stats 中获取，如果不存在则返回默认值
-    # 注意：overall_stats 目前不直接存储分级计数，
-    # 但 win_count / loss_count / flat_count 可以近似参考。
-    # 为了兼容，如果 overall_stats 中已有我们新增的字段则直接使用
     valid = overall_stats.get("grade_valid_count")
     watch = overall_stats.get("grade_watch_count")
     invalid = overall_stats.get("grade_invalid_count")
@@ -112,6 +108,24 @@ def _compute_grade_stats_from_overall(overall_stats: dict) -> dict:
         "grade_effective_rate": effective_rate,
         "grade_sample_count": sample_count,
     }
+
+
+def _compute_grade_stats_from_overall(overall_stats: dict) -> dict:
+    """（内部版本）从 overall_stats 中计算建议复盘分级统计（只读）。
+
+    返回值兼容旧快照：旧快照没有这些字段时显示为 None / 0。
+
+    返回：
+        {
+            "grade_valid_count": int,
+            "grade_watch_count": int,
+            "grade_invalid_count": int,
+            "grade_insufficient_count": int,
+            "grade_effective_rate": float | None,
+            "grade_sample_count": int,
+        }
+    """
+    return compute_grade_stats_from_overall(overall_stats)
 
 
 def save_recommendation_review_snapshot(
