@@ -192,6 +192,12 @@ def save_recommendation_review_snapshot(
     # ── 分级统计（v16 新增，向下兼容） ──
     grade_stats = _compute_grade_stats_from_overall(overall_stats)
 
+    # ── v20: 失效原因统计（如果提供了则存储，否则尝试从 overall 提取） ──
+    if grade_stats is None:
+        failure_stats_for_snapshot = None
+    else:
+        failure_stats_for_snapshot = grade_stats.get("failure_stats")
+
     snapshot = {
         "snapshot_id": snapshot_id,
         "created_at": created_at,
@@ -201,6 +207,7 @@ def save_recommendation_review_snapshot(
         "top_actions": top_actions,
         "top_horizons": top_horizons,
         "grade_stats": grade_stats,
+        "failure_stats": failure_stats_for_snapshot,
     }
 
     snapshots = _read_raw()

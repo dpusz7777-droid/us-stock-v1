@@ -1726,6 +1726,118 @@ def classify_recommendation_failure_reason(row: dict) -> dict:
         }
 
 
+def build_failure_reason_summary(review_rows: list[dict]) -> dict:
+    """对当前建议复盘结果进行只读失效原因统计总览。
+
+    参数：
+        review_rows: review_recommendations 返回的复盘结果列表
+
+    返回：
+        {
+            "total_failed_count": int,
+            "reason_counts": dict,
+            "severity_counts": dict,
+            "top_failure_reason": str,
+            "top_failure_ratio": float | None,
+            "conclusion": str,
+            "next_action": str,
+        }
+
+    规则：
+        - 只统计 review_grade = 失效 的建议
+        - 对每条失效建议调用 classify_recommendation_failure_reason(row)
+        - 结论基于统计结果自动生成
+
+    安全原则：
+        - 只读计算，不写回任何文件
+        - 字段缺失时不会崩溃
+        - 不构成投资建议
+    """
+    try:
+        if not review_rows:
+            return {
+                "total_failed_count": 0,
+                "reason_counts": {},
+                "severity_counts": {},
+                "top_failure_reason": "无",
+                "top_failure_ratio": None,
+                "conclusion": "当前没有失效建议，继续积累样本观察。",
+                "next_action": "继续保存复盘快照，观察长期趋势。",
+            }
+
+        reason_counts = {"买入后下跌": 0, "卖出后上涨": 0, "动作类型无法识别": 0, "数据不足导致无法判断": 0, "其他失效原因": 0}
+        severity_counts = {"高": 0, "中": 0, "低": 0}
+        total_failed = 0
+
+        for row in review_rows:
+            grade = row.get("review_grade", "")
+            if grade != "失效":
+                continue
+            total_failed += 1
+            try:
+                f_result = classify_recommendation_failure_reason(row)
+                reason = f_result.get("failure_reason", "其他失效原因")
+                sev = f_result.get("failure_severity", "低")
+                if reason in reason_counts:
+                    reason_counts[reason] += 1
+                else:
+                    reason_counts["其他失效原因"] += 1
+                if sev in severity_counts:
+                    severity_counts[sev] += 1
+            except Exception:
+                reason_counts["其他失效原因"] += 1
+                severity_counts["低"] += 1
+
+        if total_failed == 0:
+            return {
+                "total_failed_count": 0,
+                "reason_counts": {},
+                "severity_counts": {},
+                "top_failure_reason": "无",
+                "top_failure_ratio": None,
+                "conclusion": "当前没有失效建议，继续积累样本观察。",
+                "next_action": "继续保存复盘快照，观察长期趋势。",
+            }
+
+        # 找出最主要失效原因
+        top_reason = max(reason_counts, key=reason_counts.get)
+        top_count = reason_counts[top_reason]
+        top_ratio = round(top_count / total_failed, 2)
+
+        # 结论逻辑
+        high_sev = severity_counts.get("高", 0)
+        if top_ratio >= 0.6:
+            conclusion = f"失效原因较集中，主要集中在「{top_reason}」（占比 {top_ratio:.0%}）。"
+            next_action = f"优先复盘{top_reason}类建议的触发条件，检查市场环境和判断逻辑。"
+        elif high_sev >= 2:
+            conclusion = "存在多条高严重失效建议，需要重点复查。"
+            next_action = "优先查看高严重程度失效建议明细，分析共同特征。"
+        else:
+            conclusion = "失效原因较分散，继续积累样本观察。"
+            next_action = "继续观察不同市场环境下的建议表现，积累更多快照后再做分析。"
+
+        return {
+            "total_failed_count": total_failed,
+            "reason_counts": {k: v for k, v in reason_counts.items() if v > 0},
+            "severity_counts": {k: v for k, v in severity_counts.items() if v > 0},
+            "top_failure_reason": top_reason,
+            "top_failure_ratio": top_ratio,
+            "conclusion": conclusion,
+            "next_action": next_action,
+        }
+
+    except Exception:
+        return {
+            "total_failed_count": 0,
+            "reason_counts": {},
+            "severity_counts": {},
+            "top_failure_reason": "无",
+            "top_failure_ratio": None,
+            "conclusion": "分析失效原因统计时出现异常，请确认数据格式。",
+            "next_action": "检查建议数据格式，确保字段完整。",
+        }
+
+
 def build_recommendation_review_quality_explanation(review_rows: list[dict]) -> dict:
     """对当前建议复盘结果进行只读质量解释。
 
