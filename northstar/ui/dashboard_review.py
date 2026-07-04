@@ -483,6 +483,42 @@ def render_recommendation_review_section(
     except Exception:
         st.markdown('<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">至少需要 2 条包含失效原因统计的快照后才能观察失效原因趋势。</div>', unsafe_allow_html=True)
 
+    # ── v36: Portfolio Intelligence Layer ──
+    try:
+        from northstar.data.recommendation_review import build_portfolio_intelligence_summary, build_portfolio_rebalance_insight
+        pi_recs = get_all_recommendations_fn()
+        if pi_recs:
+            pi = build_portfolio_intelligence_summary(pi_recs)
+            rebal = build_portfolio_rebalance_insight(pi_recs)
+            ph = pi.get("portfolio_health", {})
+            with st.expander("📊 Portfolio Intelligence", expanded=False):
+                st.caption("**组合智能分析**：基于策略稳定性、失效风险和多元化的组合级评分。")
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Overall Score", f'{ph.get("overall_score", 0):.2f}')
+                c2.metric("Risk Level", ph.get("risk_level", "unknown").upper())
+                c3.metric("Diversification", f'{ph.get("diversification_score", 0):.2f}')
+                ws = pi.get("strategy_weights_suggestion", {})
+                if ws:
+                    st.markdown("**Suggested Strategy Weights**")
+                    w_rows = [{"Strategy": k, "Weight": v} for k, v in sorted(ws.items(), key=lambda x: -x[1])]
+                    st.dataframe(w_rows, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("暂无策略权重建议（样本不足）。")
+                ra = rebal.get("action", "maintain")
+                st.markdown(f"**Rebalance Action**: {ra}")
+                adj = rebal.get("top_adjustments", [])
+                if adj:
+                    st.markdown("**Top Adjustments**")
+                    for a in adj:
+                        st.markdown(f"- {a['strategy']}: **{a['action']}** — {a['reason']}")
+                else:
+                    st.caption("暂无调整建议。")
+                st.caption("组合分析仅用于参考，不构成投资建议。")
+        else:
+            pass
+    except Exception:
+        pass
+
     # 建议复盘统计
     st.markdown('<div class="mt" style="margin-top:20px;">📊 建议复盘统计</div>', unsafe_allow_html=True)
     st.caption("**建议复盘统计**：整体建议的复盘汇总，包含胜率、涨跌幅、最佳/最差建议等统计指标。")

@@ -880,6 +880,71 @@ def build_strategy_failure_warning(review_rows: list[dict]) -> dict:
     affected = [{"strategy": s, "reason": "risk_score >= 0.3", "score": risk["strategy_failure_risk"][s]["risk_score"]} for s in hr]
     return {"warning_level": wl, "affected_strategies": affected, "system_status": st}
 
+
+# ── v36: Portfolio Intelligence Layer ──
+
+def build_portfolio_intelligence_summary(review_rows: list[dict]) -> dict:
+    """组合级智能分析（只读）。
+
+    规则：
+        overall_score = avg(stability_avg) - avg(risk_score) / 100 + diversification
+        权重建议基于稳定性和风险动态调整
+    """
+    result = {"portfolio_health": {"overall_score": 0.0, "risk_level": "unknown", "diversification_score": 0.0}, "strategy_weights_suggestion": {}, "over_exposed_strategies": [], "under_utilized_strategies": []}
+    if not review_rows or len(review_rows) < 4:
+        return result
+
+    stability = build_strategy_stability_summary(review_rows)
+    failure_risk = build_strategy_failure_risk_summary(review_rows)
+    matrix = build_strategy_regime_matrix(review_rows)
+
+    strategies = set(list(stability["strategy_stability"].keys()) + list(failure_risk["strategy_failure_risk"].keys()))
+    n = len(strategies)
+    if n == 0:
+        return result
+
+    avg_stability = sum(s["stability_score"] for s in stability["strategy_stability"].values()) / n if stability["strategy_stability"] else 0.0
+    avg_risk = sum(r["risk_score"] for r in failure_risk["strategy_failure_risk"].values()) / n if failure_risk["strategy_failure_risk"] else 0.0
+    regime_count = len(matrix)
+    diversification = min(regime_count / 5, 1.0)
+    overall = round((avg_stability / 100) - avg_risk + diversification, 2)
+    overall = max(0.0, min(1.0, overall))
+
+    risk_level = "low" if overall >= 0.6 else ("medium" if overall >= 0.3 else "high")
+
+    # 权重建议
+    raw_weights = {}
+    for st in strategies:
+        s_score = stability["strategy_stability"].get(st, {}).get("stability_score", 50)
+        r_score = failure_risk["strategy_failure_risk"].get(st, {}).get("risk_score", 0.1)
+        raw_weights[st] = max(0.0, (s_score / 100) - r_score)
+    total = sum(raw_weights.values()) if raw_weights else 1.0
+    weights = {k: round(v / total, 2) for k, v in raw_weights.items()} if total > 0 else {}
+
+    # 暴露检测
+    equal_weight = 1.0 / n if n > 0 else 0.0
+    over = [s for s, w in weights.items() if w > equal_weight * 1.5]
+    under = [s for s, w in weights.items() if w < equal_weight * 0.5 and w > 0]
+
+    result["portfolio_health"] = {"overall_score": overall, "risk_level": risk_level, "diversification_score": round(diversification, 2)}
+    result["strategy_weights_suggestion"] = weights
+    result["over_exposed_strategies"] = over
+    result["under_utilized_strategies"] = under
+    return result
+
+
+def build_portfolio_rebalance_insight(review_rows: list[dict]) -> dict:
+    """组合重平衡建议（只读）。"""
+    pi = build_portfolio_intelligence_summary(review_rows)
+    risk = build_strategy_failure_risk_summary(review_rows)
+    adjustments = []
+    for s in pi.get("over_exposed_strategies", []):
+        adjustments.append({"strategy": s, "action": "reduce", "reason": "over_exposed with risk {}".format(risk.get("strategy_failure_risk", {}).get(s, {}).get("risk_score", "?"))})
+    for s in pi.get("under_utilized_strategies", []):
+        adjustments.append({"strategy": s, "action": "increase", "reason": "under_utilized, potential for better allocation"})
+    action = "rebalance" if adjustments else "maintain"
+    return {"action": action, "top_adjustments": adjustments[:5]}
+
 def calculate_review_stats(recommendations:list[dict])->dict:
     total=len(recommendations); rc=0; oc=0; up=0; down=0; flat=0; unk=0; cps=[]; wg={}
     for rec in recommendations:
