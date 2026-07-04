@@ -508,6 +508,82 @@ def run() -> None:
             unsafe_allow_html=True,
         )
 
+    # ── 建议复盘统计 ─────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">📊 建议复盘统计</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review import get_recommendation_review_stats, format_change_pct
+        from northstar.data.recommendation_store import get_all_recommendations as _stats_recs
+
+        try:
+            stats_recs = _stats_recs()
+        except Exception:
+            stats_recs = []
+
+        if not stats_recs:
+            st.markdown(
+                '<div class="cd" style="text-align:center;color:#94A3B8;font-size:12px;">暂无建议数据</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            stats = get_recommendation_review_stats(stats_recs)
+
+            def _pct_str(val: float | None) -> str:
+                if val is None:
+                    return "暂无数据"
+                return format_change_pct(val)
+
+            def _review_item_html(item: dict | None, label: str) -> str:
+                if item is None:
+                    return f'<span style="color:#94A3B8;font-size:11px;">暂无数据</span>'
+                symbol = item.get("symbol", "?")
+                cp = item.get("change_pct", 0)
+                date = (item.get("created_at", "") or "")[:10]
+                color = "gn" if cp > 0 else ("rd" if cp < 0 else "")
+                return (
+                    f'<span style="font-weight:600;color:#2563EB;font-size:12px;">{symbol}</span> '
+                    f'<span style="color:#94A3B8;font-size:10px;">{date}</span> '
+                    f'<span class="{color}" style="font-size:11px;">{format_change_pct(cp)}</span>'
+                )
+
+            win_rate_str = _pct_str(stats.get("win_rate"))
+            avg_str = _pct_str(stats.get("avg_change_pct"))
+
+            # Row 1: counts
+            col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+            col_s1.metric("建议总数", stats.get("total_count", 0))
+            col_s2.metric("已复盘", stats.get("reviewed_count", 0))
+            col_s3.metric("待复盘", stats.get("pending_count", 0))
+            col_s4.metric("到期未复盘", stats.get("due_count", 0))
+
+            # Row 2: win rate, avg change, best, worst
+            col_s5, col_s6, col_s7, col_s8 = st.columns(4)
+            col_s5.metric("胜率", win_rate_str)
+            col_s6.metric("平均涨跌幅", avg_str)
+            best = stats.get("best_review")
+            worst = stats.get("worst_review")
+
+            best_html = _review_item_html(best, "最佳")
+            worst_html = _review_item_html(worst, "最差")
+            st.markdown(
+                f'<div class="cd" style="padding:10px 14px;">'
+                f'<div class="rw"><span class="lb">最佳建议</span><span>{best_html}</span></div>'
+                f'<div class="rw" style="border-bottom:none;"><span class="lb">最差建议</span><span>{worst_html}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+    except ImportError as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#DC2626;font-size:11px;">复盘统计模块未加载: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+    except Exception as exc:
+        st.markdown(
+            f'<div class="cd" style="color:#B45309;font-size:11px;">复盘统计异常: {exc}</div>',
+            unsafe_allow_html=True,
+        )
+
     st.markdown('<div class="ftr">北极星 · 仅用于研究参考 · 不构成投资建议</div>', unsafe_allow_html=True)
 
 

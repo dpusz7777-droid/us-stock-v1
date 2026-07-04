@@ -206,3 +206,243 @@ def format_change(value: float | None) -> str:
         return f"-${abs(value):.2f}"
     else:
         return "$0.00"
+
+
+def get_recommendation_review_stats(recommendations: list[dict]) -> dict:
+    """计算建议复盘统计指标（增强版）。
+
+    参数：
+        recommendations: 完整建议记录列表（来自 get_all_recommendations）
+
+    返回：
+        dict 包含以下字段：
+            total_count: int             建议总数
+            reviewed_count: int          已复盘数
+            pending_count: int           未复盘数
+            due_count: int               到期未复盘数
+            win_count: int               上涨数
+            loss_count: int              下跌数
+            win_rate: float | None       胜率（上涨/已复盘）
+            avg_change_pct: float | None 平均涨跌幅
+            best_review: dict | None     涨幅最高的一条建议（含 symbol, created_at, change_pct, review_status）
+            worst_review: dict | None    跌幅最低的一条建议
+
+    安全保证：
+        - 字段缺失、旧数据、review_result=None 不会崩溃
+        - 没有任何写回操作
+        - recommendations.json 为空时返回全 0 / None
+    """
+    total_count = len(recommendations)
+    if total_count == 0:
+        return {
+            "total_count": 0,
+            "reviewed_count": 0,
+            "pending_count": 0,
+            "due_count": 0,
+            "win_count": 0,
+            "loss_count": 0,
+            "win_rate": None,
+            "avg_change_pct": None,
+            "best_review": None,
+            "worst_review": None,
+        }
+
+    reviewed_count = 0
+    pending_count = 0
+    win_count = 0
+    loss_count = 0
+    change_pcts: list[float] = []
+    reviewed_recs_with_pct: list[dict] = []
+    open_recs_for_due: list[dict] = []
+
+    for rec in recommendations:
+        status = rec.get("status", "open")
+        review_result = rec.get("review_result")
+
+        if status == "reviewed":
+            reviewed_count += 1
+
+            if isinstance(review_result, dict):
+                rv_status = review_result.get("review_status", "")
+                change_pct = review_result.get("change_pct")
+
+                if rv_status == "上涨":
+                    win_count += 1
+                elif rv_status == "下跌":
+                    loss_count += 1
+
+                if change_pct is not None:
+                    try:
+                        val = float(change_pct)
+                        change_pcts.append(val)
+                        reviewed_recs_with_pct.append({
+                            "symbol": rec.get("symbol", "?"),
+                            "created_at": rec.get("created_at", ""),
+                            "change_pct": val,
+                            "review_status": rv_status,
+                        })
+                    except (TypeError, ValueError):
+                        pass
+        else:
+            pending_count += 1
+            open_recs_for_due.append(rec)
+
+    # Compute due_count: open records that have passed review_after_days
+    due_count = 0
+    for rec in open_recs_for_due:
+        review_after = rec.get("review_after_days", 7)
+        created_at = rec.get("created_at")
+        if created_at and isinstance(review_after, (int, float)):
+            dt = _parse_datetime(created_at)
+            if dt:
+                days = (datetime.now() - dt).days
+                if days >= review_after:
+                    due_count += 1
+
+    # Compute avg_change_pct
+    avg_change_pct: float | None = None
+    if change_pcts:
+        avg_change_pct = round(sum(change_pcts) / len(change_pcts), 2)
+
+    # Compute win_rate (上涨 / 已复盘)
+    win_rate: float | None = None
+    if reviewed_count > 0:
+        win_rate = round(win_count / reviewed_count * 100, 2)
+
+    # Find best and worst review
+    best_review: dict | None = None
+    worst_review: dict | None = None
+    if reviewed_recs_with_pct:
+        best_review = max(reviewed_recs_with_pct, key=lambda x: x["change_pct"])
+        worst_review = min(reviewed_recs_with_pct, key=lambda x: x["change_pct"])
+
+    return {
+        "total_count": total_count,
+        "reviewed_count": reviewed_count,
+        "pending_count": pending_count,
+        "due_count": due_count,
+        "win_count": win_count,
+        "loss_count": loss_count,
+        "win_rate": win_rate,
+        "avg_change_pct": avg_change_pct,
+        "best_review": best_review,
+        "worst_review": worst_review,
+    }
+
+
+def calculate_review_stats(recommendations: list[dict]) -> dict:
+    """计算建议复盘统计指标。
+
+    参数：
+        recommendations: 完整建议记录列表（来自 get_all_recommendations）
+
+    返回：
+        dict 包含以下字段：
+            total: int          总建议数
+            reviewed: int       已复盘数
+            open: int           未复盘数
+            up: int             上涨数
+            down: int           下跌数
+            flat: int           持平数
+            unknown: int        无法计算数
+            avg_change_pct: float | None  平均涨跌幅
+            win_rates: dict     各动作胜率 {"买入": float|None, "持有": float|None, "卖出": float|None}
+
+    安全保证：
+        - 字段缺失、旧数据、review_result=None 不会崩溃
+        - 没有任何写回操作
+    """
+    total = len(recommendations)
+    reviewed_count = 0
+    open_count = 0
+    up = 0
+    down = 0
+    flat = 0
+    unknown = 0
+    change_pcts: list[float] = []
+    win_groups: dict[str, dict] = {}  # action -> {"total": int, "up": int}
+
+    for rec in recommendations:
+        status = rec.get("status", "open")
+        action = rec.get("action", "")
+        review_result = rec.get("review_result")
+
+        if status == "reviewed":
+            reviewed_count += 1
+
+            if isinstance(review_result, dict):
+                rv_status = review_result.get("review_status", "")
+                change_pct = review_result.get("change_pct")
+
+                # Count up/down/flat/unknown
+                if rv_status == "上涨":
+                    up += 1
+                elif rv_status == "下跌":
+                    down += 1
+                elif rv_status == "持平":
+                    flat += 1
+                elif rv_status in ("无法计算", "价格获取失败", "缺少建议价格，无法计算收益率", "请使用英文股票代码，例如 NVDA"):
+                    unknown += 1
+                elif rv_status:
+                    unknown += 1
+                else:
+                    unknown += 1
+
+                # Accumulate change_pct for average
+                if change_pct is not None:
+                    try:
+                        val = float(change_pct)
+                        change_pcts.append(val)
+                    except (TypeError, ValueError):
+                        pass
+
+                # Track win rates by action
+                if action:
+                    if action not in win_groups:
+                        win_groups[action] = {"total": 0, "up": 0}
+                    win_groups[action]["total"] += 1
+                    if rv_status == "上涨":
+                        win_groups[action]["up"] += 1
+            else:
+                # review_result is not a dict (e.g., old data or string)
+                unknown += 1
+                if action:
+                    if action not in win_groups:
+                        win_groups[action] = {"total": 0, "up": 0}
+                    win_groups[action]["total"] += 1
+        else:
+            open_count += 1
+
+    # Compute average change_pct
+    avg_change_pct: float | None = None
+    if change_pcts:
+        avg_change_pct = round(sum(change_pcts) / len(change_pcts), 2)
+
+    # Compute win rates
+    win_rates: dict[str, float | None] = {}
+    for action_name in ("买入", "持有", "卖出"):
+        group = win_groups.get(action_name)
+        if group and group["total"] > 0:
+            win_rates[action_name] = round(group["up"] / group["total"] * 100, 2)
+        else:
+            win_rates[action_name] = None
+
+    # Remaining actions (观察, 风险提示, others)
+    for action_name, group in win_groups.items():
+        if action_name not in win_rates:
+            if group["total"] > 0:
+                win_rates[action_name] = round(group["up"] / group["total"] * 100, 2)
+            else:
+                win_rates[action_name] = None
+
+    return {
+        "total": total,
+        "reviewed": reviewed_count,
+        "open": open_count,
+        "up": up,
+        "down": down,
+        "flat": flat,
+        "unknown": unknown,
+        "avg_change_pct": avg_change_pct,
+        "win_rates": win_rates,
+    }
