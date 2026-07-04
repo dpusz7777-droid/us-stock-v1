@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "score": 50.0,
+  "adjusted_weight": 1.0,
+  "sample_size": 0,
+  "sufficient_sample": false,
+  "metrics": {
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "prediction_accuracy": null,
+    "raw_score": 10.0,
+    "reliability": 0.0
+  },
+  "report": {},
+  "updated_at": "2026-07-04T09:01:13Z"
+}

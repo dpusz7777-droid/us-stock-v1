@@ -1,0 +1,2322 @@
+[
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:31:12",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:09",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:13",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:16",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:19",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:22",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:25",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:28",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:31",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:34",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:37",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:40",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:43",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:32:46",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:33:30",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:33:38",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:33:41",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:33:44",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:33:47",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:33:50",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:33:53",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:34:35",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:34:44",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:34:47",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:34:50",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:34:53",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:34:56",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:35:33",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:35:41",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:35:44",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:35:47",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:35:50",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:35:53",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:35:56",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:36:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:36:56",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:07",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:10",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:13",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:16",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:19",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:22",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:25",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:28",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:31",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:34",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:49",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:52",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:55",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:37:58",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:38:01",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:07",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:15",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:18",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:21",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:24",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:27",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:30",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:33",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:36",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:45",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:48",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:51",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:54",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:41:57",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:00",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:03",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:06",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:09",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:12",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:18",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:21",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:24",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:27",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:30",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:33",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:36",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:45",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:48",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:51",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:54",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:42:57",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:00",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:03",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:06",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:09",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:12",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:15",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:20",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:23",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:26",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:29",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:32",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:35",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:38",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:41",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:44",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:47",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:50",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:53",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:56",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:43:59",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:02",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:05",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:08",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:11",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:14",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:17",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:32",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:35",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:45",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:48",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:51",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:54",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:44:57",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:00",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:03",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:06",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:09",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:12",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:15",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:18",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:21",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:24",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:27",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:30",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:36",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:45",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:48",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:51",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:54",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:45:57",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:00",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:03",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:06",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:09",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:12",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:15",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:18",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:22",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:25",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:28",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:31",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:34",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:41",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:44",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:47",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:50",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:53",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:56",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:46:59",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:02",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:05",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:08",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:11",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:14",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:17",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:20",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:23",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:26",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:29",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:33",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:36",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:47:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:00",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:03",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:06",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:09",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:12",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:15",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:18",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:21",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:24",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:27",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:30",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:33",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:36",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:45",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:48",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:51",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:54",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:48:57",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:03",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:06",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:09",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:12",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:15",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:18",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:21",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:24",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:27",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:30",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:33",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:36",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:45",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:48",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:51",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:54",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:49:57",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:00",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:05",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:08",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:11",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:14",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:17",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:20",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:23",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:26",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:29",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:32",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:35",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:38",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:41",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:44",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:47",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:50",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:53",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:56",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:50:59",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:02",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:10",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:13",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:16",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:19",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:22",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:25",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:29",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:32",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:35",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:38",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:41",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:44",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:47",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:50",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:53",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:56",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:51:59",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:02",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:05",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:08",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:13",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:16",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:19",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:22",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:25",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:28",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:31",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:34",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:37",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:40",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:43",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:46",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:49",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:52",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:55",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:52:58",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:01",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:04",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:07",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:10",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:18",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:21",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:24",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:27",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:30",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:33",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:36",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:39",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:42",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:45",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:48",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:51",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:54",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:53:57",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:54:00",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:54:03",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  },
+  {
+    "date": "2026-07-04",
+    "timestamp": "2026-07-04 00:54:06",
+    "equity": 10000.0,
+    "cash": 10000.0,
+    "pnl": 0.0,
+    "position_count": 3
+  }
+]

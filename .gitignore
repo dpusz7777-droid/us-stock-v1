@@ -68,3 +68,20 @@ Thumbs.db
 
 # ── 日志 ──
 *.log
+logs/*.log
+.aider*
+
+# ── 运行缓存 ──
+.cache/
+northstar/runtime/*.pid
+northstar.lock
+northstar.browser_opened
+northstar_crash.log
+
+# ── 临时恢复文件 ──
+restored_ui.py
+polaris.py
+
+# ── 测试临时文件 ──
+tests/__pycache__/
+tests/.pytest_cache/
