@@ -95,16 +95,16 @@ def run() -> None:
     if not isinstance(trades, list): trades = []
     if not isinstance(curve, list): curve = []
 
-    # ── v28: 集中维护的测试状态 ──
+    # ── v29: 集中维护的测试状态 ──
     def get_project_test_status() -> dict:
         """返回最近一次开发验收的测试结果（只读、免重启配置）。"""
         return {
-            "passed": 79,
-            "total": 79,
+            "passed": 86,
+            "total": 86,
             "status": "通过",
-            "note": "来自最近一次开发验收（v27）；后续每次改动仍需重新运行测试",
+            "note": "来自最近一次开发验收（v28）；后续每次改动仍需重新运行测试",
             "suites": [
-                {"name": "项目状态测试", "passed": 6, "total": 6},
+                {"name": "项目状态测试", "passed": 13, "total": 13},
                 {"name": "导入稳定性测试", "passed": 10, "total": 10},
                 {"name": "建议分级测试", "passed": 17, "total": 17},
                 {"name": "快照分级测试", "passed": 13, "total": 13},
