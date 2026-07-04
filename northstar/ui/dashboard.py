@@ -558,6 +558,85 @@ def run() -> None:
     except Exception:
         pass
 
+    # ── 复盘数据体检 ─────────────────────────────────────────────────────
+    st.markdown('<div class="mt" style="margin-top:20px;">🩺 复盘数据体检</div>', unsafe_allow_html=True)
+
+    try:
+        from northstar.data.recommendation_review import get_recommendation_review_data_health, format_change_pct
+        from northstar.data.recommendation_store import get_all_recommendations as _health_recs
+
+        try:
+            health_recs = _health_recs()
+        except Exception:
+            health_recs = []
+
+        health = get_recommendation_review_data_health(health_recs)
+
+        if health["status"] == "ok":
+            st.success(health["summary"])
+        elif health["status"] == "warning":
+            st.warning(health["summary"])
+        else:
+            st.error(health["summary"])
+
+        # Metric cards
+        hc1, hc2, hc3, hc4 = st.columns(4)
+        hc1.metric("建议总数", health.get("total_count", 0))
+        hc2.metric("数据健康分", f'{health.get("health_score", 100):.0f}')
+        hc3.metric("问题总数", health.get("issue_count", 0))
+        hc4.metric("受影响记录", health.get("affected_count", 0))
+
+        # Issue type table
+        issues_by_type = health.get("issues_by_type", {})
+        non_zero_issues = {k: v for k, v in issues_by_type.items() if v > 0}
+
+        if non_zero_issues:
+            issue_labels = {
+                "missing_symbol": "缺少股票代码",
+                "missing_action": "缺少建议动作",
+                "unknown_action": "无法识别建议动作",
+                "missing_recommendation_price": "缺少建议价",
+                "missing_current_price": "已复盘但缺少当前价",
+                "missing_change_pct": "已复盘但缺少涨跌幅",
+                "invalid_date": "日期格式异常",
+                "review_status_inconsistent": "复盘状态不一致",
+                "outcome_unknown": "已复盘但无法判断胜负",
+            }
+            issue_rows_table = []
+            for issue_key, count in sorted(non_zero_issues.items(), key=lambda x: -x[1]):
+                issue_rows_table.append({
+                    "问题类型": issue_labels.get(issue_key, issue_key),
+                    "数量": count,
+                })
+            st.markdown("**问题类型统计**")
+            import pandas as _pd_health
+            st.dataframe(_pd_health.DataFrame(issue_rows_table), use_container_width=True, hide_index=True)
+        else:
+            st.caption("暂无数据质量问题")
+
+        # Issue detail table
+        issue_rows = health.get("issue_rows", [])
+        if issue_rows:
+            st.markdown("**问题明细（前 20 条）**")
+            detail_table = []
+            for r in issue_rows:
+                detail_table.append({
+                    "序号": r.get("index", 0) + 1,
+                    "股票代码": r.get("symbol", "—"),
+                    "日期": r.get("date", "—"),
+                    "复盘状态": r.get("review_status", "—"),
+                    "问题说明": r.get("message", ""),
+                })
+            import pandas as _pd_detail
+            st.dataframe(_pd_detail.DataFrame(detail_table), use_container_width=True, hide_index=True)
+        else:
+            st.caption("暂无问题明细")
+
+    except ImportError:
+        pass
+    except Exception:
+        pass
+
     # ── 复盘快照 ─────────────────────────────────────────────────────────
     st.markdown('<div class="mt" style="margin-top:20px;">📝 复盘快照</div>', unsafe_allow_html=True)
 

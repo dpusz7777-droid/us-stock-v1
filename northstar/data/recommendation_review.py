@@ -1129,6 +1129,190 @@ def generate_recommendation_review_summary(
     }
 
 
+def get_recommendation_review_data_health(recommendations: list[dict]) -> dict:
+    """检查建议复盘数据质量，只读诊断。
+
+    参数：
+        recommendations: 完整建议记录列表
+
+    返回：
+        dict:
+            status: str                  ok / warning / error
+            total_count: int             总建议数
+            issue_count: int             问题总数
+            affected_count: int          受影响记录数
+            health_score: float          数据健康分
+            summary: str                 诊断摘要
+            issues_by_type: dict         各类型问题计数
+            issue_rows: list[dict]       问题明细
+
+    不修改任何记录，不写回文件。
+    """
+    issues_by_type: dict[str, int] = {
+        "missing_symbol": 0,
+        "missing_action": 0,
+        "unknown_action": 0,
+        "missing_recommendation_price": 0,
+        "missing_current_price": 0,
+        "missing_change_pct": 0,
+        "invalid_date": 0,
+        "review_status_inconsistent": 0,
+        "outcome_unknown": 0,
+    }
+    issue_rows: list[dict] = []
+    affected_indices: set[int] = set()
+    total = len(recommendations)
+
+    if total == 0:
+        return {
+            "status": "ok",
+            "total_count": 0,
+            "issue_count": 0,
+            "affected_count": 0,
+            "health_score": 100.0,
+            "summary": "暂无建议记录，无需体检。",
+            "issues_by_type": issues_by_type,
+            "issue_rows": [],
+        }
+
+    for idx, rec in enumerate(recommendations):
+        issues: list[str] = []
+        symbol = rec.get("symbol", "") or rec.get("ticker", "") or ""
+        action_raw = None
+        for key in ("action", "recommendation", "recommendation_type", "suggestion", "decision", "signal", "advice", "type"):
+            val = rec.get(key)
+            if val is not None and isinstance(val, str) and val.strip():
+                action_raw = val.strip()
+                break
+        status_field = rec.get("status", "open") or rec.get("review_status", "open") or "open"
+        price = rec.get("recommendation_price") or rec.get("suggested_price") or rec.get("entry_price") or rec.get("price") or rec.get("target_entry_price")
+        has_price = price is not None and price != 0 and (not isinstance(price, float) or price != 0.0)
+        reviewed = (status_field == "reviewed")
+        review_result = rec.get("review_result")
+
+        # 1. missing_symbol
+        if not symbol:
+            issues.append("missing_symbol")
+            issues_by_type["missing_symbol"] += 1
+
+        # 2. missing_action
+        if not action_raw:
+            issues.append("missing_action")
+            issues_by_type["missing_action"] += 1
+
+        # 3. unknown_action (only if action is present)
+        if action_raw:
+            action_group = infer_recommendation_action(rec)
+            if action_group == "UNKNOWN":
+                issues.append("unknown_action")
+                issues_by_type["unknown_action"] += 1
+
+        # 4. missing_recommendation_price
+        if not has_price:
+            issues.append("missing_recommendation_price")
+            issues_by_type["missing_recommendation_price"] += 1
+
+        # 5. missing_current_price (reviewed records)
+        if reviewed:
+            curr_price = rec.get("current_price") or (review_result.get("review_price") if isinstance(review_result, dict) else None)
+            if curr_price is None:
+                issues.append("missing_current_price")
+                issues_by_type["missing_current_price"] += 1
+
+        # 6. missing_change_pct (reviewed records)
+        if reviewed:
+            cp = rec.get("change_pct") or rec.get("pct_change") or rec.get("change_percent") or rec.get("return_pct")
+            if isinstance(review_result, dict) and not cp:
+                cp = review_result.get("change_pct") or review_result.get("pct_change") or review_result.get("change_percent")
+            if cp is None:
+                issues.append("missing_change_pct")
+                issues_by_type["missing_change_pct"] += 1
+
+        # 7. invalid_date
+        date_str = rec.get("recommendation_date") or rec.get("created_at") or rec.get("date")
+        if date_str:
+            try:
+                datetime.fromisoformat(str(date_str).replace("Z", "+00:00"))
+            except (TypeError, ValueError):
+                issues.append("invalid_date")
+                issues_by_type["invalid_date"] += 1
+
+        # 8. review_status_inconsistent
+        if reviewed:
+            curr_price_check = rec.get("current_price") or (review_result.get("review_price") if isinstance(review_result, dict) else None)
+            cp_check = rec.get("change_pct") or rec.get("pct_change") or rec.get("change_percent") or rec.get("return_pct")
+            if isinstance(review_result, dict) and not cp_check:
+                cp_check = review_result.get("change_pct") or review_result.get("pct_change") or review_result.get("change_percent")
+            if not curr_price_check and not cp_check:
+                issues.append("review_status_inconsistent")
+                issues_by_type["review_status_inconsistent"] += 1
+        else:
+            # Not reviewed but has review_result or reviewed_at
+            if rec.get("review_result") or rec.get("reviewed_at"):
+                issues.append("review_status_inconsistent")
+                issues_by_type["review_status_inconsistent"] += 1
+
+        # 9. outcome_unknown (reviewed, not HOLD/WATCH neutral)
+        if reviewed:
+            outcome = evaluate_recommendation_outcome(rec)
+            if outcome["outcome"] == "unknown" and outcome["action_group"] not in ("HOLD", "WATCH"):
+                issues.append("outcome_unknown")
+                issues_by_type["outcome_unknown"] += 1
+
+        if issues:
+            affected_indices.add(idx)
+            issue_rows.append({
+                "index": idx,
+                "symbol": symbol or "—",
+                "date": (date_str or "")[:10] if date_str else "—",
+                "review_status": reviewed and "已复盘" or "待复盘",
+                "issues": issues,
+                "message": _build_issue_message(issues),
+            })
+
+    total_issues = sum(issues_by_type.values())
+    affected_count = len(affected_indices)
+    health_score = max(0, 100 - total_issues * 3)
+
+    if health_score >= 90:
+        status = "ok"
+        summary = "建议复盘数据质量良好，当前未发现明显问题。" if total_issues == 0 else "建议复盘数据基本良好，存在少量可优化项。"
+    elif health_score >= 70:
+        status = "warning"
+        summary = "建议复盘数据存在少量问题，可能影响部分统计结果。"
+    else:
+        status = "error"
+        summary = "建议复盘数据存在较多问题，建议优先清理后再参考统计结论。"
+
+    return {
+        "status": status,
+        "total_count": total,
+        "issue_count": total_issues,
+        "affected_count": affected_count,
+        "health_score": health_score,
+        "summary": summary,
+        "issues_by_type": issues_by_type,
+        "issue_rows": issue_rows[:20],
+    }
+
+
+def _build_issue_message(issues: list[str]) -> str:
+    """根据问题列表生成中文说明。"""
+    msg_map = {
+        "missing_symbol": "缺少股票代码",
+        "missing_action": "缺少建议动作，无法判断建议方向",
+        "unknown_action": "无法识别建议动作",
+        "missing_recommendation_price": "缺少建议价格，无法计算涨跌幅",
+        "missing_current_price": "已复盘但缺少当前价格",
+        "missing_change_pct": "已复盘但缺少涨跌幅数据",
+        "invalid_date": "日期格式异常",
+        "review_status_inconsistent": "复盘状态不一致",
+        "outcome_unknown": "已复盘但无法判断胜负",
+    }
+    parts = [msg_map.get(issue, issue) for issue in issues if issue in msg_map]
+    return "；".join(parts)
+
+
 def calculate_review_stats(recommendations: list[dict]) -> dict:
     """计算建议复盘统计指标。
 
