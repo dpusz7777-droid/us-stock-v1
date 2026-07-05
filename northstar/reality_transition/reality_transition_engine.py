@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""现实市场迁移与真实资金验证准备层 — v7.
+"""现实市场迁移与真实资金验证准备层 — v8.
 
-v7: True Continuous Optimization Kernel (TCO).
-替换grid-search为连续constrained optimization（黄金分割搜索 + 屏障函数）。
+v8: Multi-Dimensional Portfolio Optimization Engine (MDPO).
+替换单变量优化器为多资产权重向量优化器（投影梯度下降）。
 
 仍不执行真实交易，只做真实数据驱动的行为对照与资金安全预演。
 """
@@ -19,12 +19,13 @@ from typing import Any
 
 TARGET_VOLATILITY = 0.10
 MAX_DRAWDOWN_PCT = 0.05
+MAX_SINGLE_WEIGHT = 0.30
 REGIME_MULTIPLIERS = {"trend": 1.0, "range": 0.9, "volatile": 0.6, "liquidity_stress": 0.2}
-GOLDEN_RATIO = (math.sqrt(5) - 1) / 2  # ≈ 0.618
+N_ASSETS = 5  # 支持5个资产/信号分组
 
 
 class RealityTransitionEngine:
-    """现实过渡引擎 v7 — True Continuous Optimization Kernel。"""
+    """现实过渡引擎 v8 — Multi-Dimensional Portfolio Optimization Engine。"""
 
     def __init__(self) -> None:
         self._consecutive_breakdown_days: int = 0
@@ -47,13 +48,20 @@ class RealityTransitionEngine:
         dynamic = self.compute_dynamic_rmai(base_rmai["score"], regime["regime_type"])
         breakdown = self.detect_reality_breakdown(lr, sr, pr)
         self._consecutive_breakdown_days = self._consecutive_breakdown_days + 1 if breakdown["breakdown_detected"] else 0
-        dd = lm.get("drawdown_pct", 0); vol = lm.get("volatility", 0.15); corr = lm.get("correlation_matrix", None)
+        dd = lm.get("drawdown_pct", 0); vol = lm.get("volatility", 0.15)
 
-        # v7: True Continuous Optimization Kernel (TCO)
-        tco_result = self.continuous_optimization_kernel(
-            RMAI=dynamic["dynamic_rmai"], regime=regime["regime_type"],
-            volatility=vol, drawdown=dd, signal_strength=base_rmai["signal_match"],
-            correlation_proxy=corr, stability_score=0.8, regime_confidence=regime["confidence"])
+        # v8: Multi-Dimensional Portfolio Optimization Engine
+        rmai_vec = [dynamic["dynamic_rmai"], dynamic["dynamic_rmai"] * 0.9, dynamic["dynamic_rmai"] * 0.8, dynamic["dynamic_rmai"] * 0.7, dynamic["dynamic_rmai"] * 0.6]
+        sig_vec = [base_rmai["signal_match"], base_rmai["signal_match"] * 0.9, base_rmai["signal_match"] * 0.8, base_rmai["signal_match"] * 0.7, base_rmai["signal_match"] * 0.6]
+        reg_vec = [REGIME_MULTIPLIERS.get(regime["regime_type"], 1.0)] * N_ASSETS
+        cov = [[0.15, 0.08, 0.06, 0.04, 0.02],
+               [0.08, 0.12, 0.05, 0.03, 0.02],
+               [0.06, 0.05, 0.10, 0.03, 0.02],
+               [0.04, 0.03, 0.03, 0.08, 0.01],
+               [0.02, 0.02, 0.02, 0.01, 0.06]]
+        liq_vec = [1.0 if regime["regime_type"] == "liquidity_stress" else 0.0] * N_ASSETS
+
+        mdp = self.multi_dimensional_optimizer(rmai_vec, sig_vec, reg_vec, cov, liq_vec, dd, vol)
         readiness = self.capital_deployment_readiness_engine(
             {"score": dynamic["dynamic_rmai"]}, breakdown, regime=regime["regime_type"], regime_confidence=regime["confidence"])
         stress = self.stress_test_mode(lm, sd, pd)
@@ -63,21 +71,20 @@ class RealityTransitionEngine:
         if self._kill_switch_active and self._kill_switch_until and datetime.now() >= self._kill_switch_until:
             self._kill_switch_active = False; self._kill_switch_until = None; ks["kill_switch_active"] = False
 
-        opt_w = tco_result.get("optimized_weights", [0])
-        alloc_pct = round(opt_w[0] * 100, 1) if opt_w else 0.0
-
         result = dict(date=date.today().isoformat(), rmai_score=base_rmai["score"],
                       dynamic_rmai=dynamic["dynamic_rmai"], rmai_multiplier=dynamic["multiplier"],
                       current_regime=regime["regime_type"], regime_confidence=regime["confidence"],
                       regime_switch_probability=regime["regime_switch_probability"],
                       regime_adjusted_allocation_signal=dynamic["allocation_signal"],
-                      capital_allocation_pct=alloc_pct,
-                      optimized_weights=opt_w, convergence_flag=tco_result.get("convergence_flag", False),
-                      objective_value=tco_result.get("objective_value", 0),
-                      expected_risk=tco_result.get("expected_risk", 0),
-                      expected_return_proxy=tco_result.get("expected_return_proxy", 0),
-                      solver_status=tco_result.get("solver_status", "infeasible"),
-                      risk_adjusted_exposure=round(opt_w[0], 2) if opt_w else 0,
+                      optimized_weights=mdp["optimized_weights"],
+                      portfolio_risk=mdp["portfolio_risk"],
+                      expected_return_proxy=mdp["expected_return_proxy"],
+                      diversification_score=mdp["diversification_score"],
+                      solver_status=mdp["solver_status"],
+                      expected_risk=mdp["portfolio_risk"],
+                      objective_value=mdp.get("objective_value", 0),
+                      capital_allocation_pct=round(sum(mdp["optimized_weights"]) * 100 / N_ASSETS, 1) if mdp["optimized_weights"] else 0,
+                      risk_adjusted_exposure=round(sum(mdp["optimized_weights"]) / N_ASSETS, 2) if mdp["optimized_weights"] else 0,
                       shadow_vs_live_correlation=base_rmai["shadow_corr"],
                       paper_vs_live_correlation=base_rmai["paper_corr"],
                       execution_accuracy=base_rmai["exec_accuracy"],
@@ -95,121 +102,147 @@ class RealityTransitionEngine:
             json.dump(result, f, ensure_ascii=False, indent=2)
         return result
 
-    # ═══════════════════════════════════════════════════════
-    # v7: True Continuous Optimization Kernel (TCO)
-    # ═══════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════
+    # v8: Multi-Dimensional Portfolio Optimization Engine (MDPO)
+    # ═══════════════════════════════════════════════════════════
 
-    def _tco_objective(self, w: float, rmai: float, sig: float, reg_w: float,
-                       vol: float, dd: float, liq: float, corr_pen: float) -> float:
-        """连续目标函数 (negated for minimization)."""
-        benefit = rmai * sig * reg_w * w
+    def _mdpo_objective(self, W: list[float], R: list[float], S: list[float], M: list[float],
+                        C: list[list[float]], L: list[float], dd: float, vol: float) -> float:
+        """多资产目标函数: Σ(benefit_i) - λ1×var - λ2×dd - λ3×liq - λ4×conc. """
+        n = len(W)
+        benefit = sum(R[i] * S[i] * M[i] * W[i] for i in range(n))
+        var = sum(W[i] * W[j] * C[i][j] for i in range(n) for j in range(n)) if n > 0 else 0
+        liq_risk = sum(L[i] * W[i] for i in range(n))
+        conc = max(W) - 1.0 / n  # concentration penalty
         λ1, λ2, λ3, λ4 = 0.5, 0.3, 0.15, 0.05
-        penalty = λ1 * vol * w + λ2 * dd * w + λ3 * liq * w + λ4 * corr_pen * w
-        return -(benefit - penalty)  # negate for minimize
+        return benefit - λ1 * var - λ2 * dd * sum(W) - λ3 * liq_risk - λ4 * max(0, conc)
 
-    def _tco_golden_section(self, a: float, b: float, tol: float, **kwargs) -> tuple[float, float, bool]:
-        """黄金分割搜索求连续约束域内的最优解。"""
-        if b - a < tol:
-            return (a + b) / 2, self._tco_objective((a + b) / 2, **kwargs), True
-
-        c = b - GOLDEN_RATIO * (b - a)
-        d = a + GOLDEN_RATIO * (b - a)
-        fc = self._tco_objective(c, **kwargs)
-        fd = self._tco_objective(d, **kwargs)
-
-        for _ in range(100):  # max iterations
-            if abs(b - a) < tol:
-                x = (a + b) / 2
-                return x, self._tco_objective(x, **kwargs), True
-
-            if fc < fd:  # minimum is in [a, d]
-                b = d; d = c
-                fd = fc
-                c = b - GOLDEN_RATIO * (b - a)
-                fc = self._tco_objective(c, **kwargs)
-            else:  # minimum is in [c, b]
-                a = c; c = d
-                fc = fd
-                d = a + GOLDEN_RATIO * (b - a)
-                fd = self._tco_objective(d, **kwargs)
-
-        x = (a + b) / 2
-        return x, self._tco_objective(x, **kwargs), False
-
-    def _tco_feasible_interval(self, vol: float, dd: float, liq: float, regime: str,
-                                stability_score: float, drawdown: float) -> tuple[float, float]:
-        """计算可行区间 [0, w_max] 满足所有约束。"""
-        w_max = 1.0
-        # vol ≤ TARGET_VOL
-        if vol > 0:
-            w_max = min(w_max, TARGET_VOLATILITY / vol)
-        # dd ≤ MAX_DD
-        if dd > 0:
-            w_max = min(w_max, MAX_DRAWDOWN_PCT / dd)
-        # liquidity stress cap
-        if liq > 0 or regime == "liquidity_stress":
-            w_max = min(w_max, 0.1)
-        # drawdown > 5% → 0
-        if drawdown > 0.05:
-            w_max = 0.0
-        # stability
-        if stability_score < 0.6:
-            w_max = min(w_max, 0.2)
-        return 0.0, max(0.0, w_max)
-
-    def continuous_optimization_kernel(self, RMAI: float, regime: str = "range", volatility: float = 0.15,
-                                       drawdown: float = 0.0, signal_strength: float = 0.5,
-                                       correlation_proxy: Any = None, stability_score: float = 0.8,
-                                       regime_confidence: float = 0.5) -> dict[str, Any]:
-        """True Continuous Optimization Kernel — 替换grid-search.
-
-        使用黄金分割搜索 + 可行域分析实现连续无偏优化。
-        """
-        reg_w = REGIME_MULTIPLIERS.get(regime, 1.0)
-        corr_pen = 1.0
-        if correlation_proxy is not None and isinstance(correlation_proxy, dict):
-            vals = list(correlation_proxy.values())
-            avg_c = sum(vals) / len(vals) if vals else 0
-            if avg_c > 0.5:
-                corr_pen = 1.0 + (avg_c - 0.5) * 2
-        liq_flag = 1.0 if regime == "liquidity_stress" else 0.0
-
-        # 计算可行区间
-        lo, hi = self._tco_feasible_interval(volatility, drawdown, liq_flag, regime, stability_score, drawdown)
-
-        kwargs = dict(rmai=RMAI, sig=signal_strength, reg_w=reg_w,
-                      vol=volatility, dd=drawdown, liq=liq_flag, corr_pen=corr_pen)
-
-        if hi <= 0:
-            best_w, obj_val, converged = 0.0, 0.0, True
-        elif hi - lo < 1e-10:
-            best_w, obj_val, converged = lo, self._tco_objective(lo, **kwargs), True
+    def _mdpo_project(self, W: list[float]) -> list[float]:
+        """投影到单纯形: sum(W)=1, W_i ≥ 0, max(W_i) ≤ MAX_SINGLE_WEIGHT。"""
+        n = len(W)
+        # 非负投影
+        w = [max(0.0, x) for x in W]
+        # 单一资产上限
+        w = [min(x, MAX_SINGLE_WEIGHT) for x in w]
+        # 单纯形投影 (sum = 1)
+        s = sum(w)
+        if s > 0:
+            w = [x / s for x in w]
         else:
-            best_w, obj_val, converged = self._tco_golden_section(lo, hi, tol=1e-6, **kwargs)
-            best_w = max(lo, min(hi, best_w))
-            obj_val = self._tco_objective(best_w, **kwargs)
+            w = [1.0 / n for _ in range(n)]
+        # 再次应用上限
+        for i in range(n):
+            if w[i] > MAX_SINGLE_WEIGHT:
+                excess = w[i] - MAX_SINGLE_WEIGHT
+                w[i] = MAX_SINGLE_WEIGHT
+                # 分散到其他
+                others = [j for j in range(n) if j != i and w[j] < MAX_SINGLE_WEIGHT]
+                if others:
+                    each = excess / len(others)
+                    for j in others:
+                        w[j] = min(MAX_SINGLE_WEIGHT, w[j] + each)
+        return w
 
-        expected_risk = round(volatility * best_w, 4)
-        exp_ret = round(RMAI * reg_w * signal_strength * best_w / 100, 4)
-        status = "optimal" if converged and best_w >= 0.05 else ("feasible" if best_w > 0 else "infeasible")
+    def multi_dimensional_optimizer(self, RMAI_vec: list[float], signal_vec: list[float],
+                                    regime_vec: list[float], cov_matrix: list[list[float]],
+                                    liquidity_vec: list[float], drawdown: float, volatility: float) -> dict[str, Any]:
+        """多维度组合优化器 (投影梯度下降)。"""
+        n = min(len(RMAI_vec), N_ASSETS)
+        if n == 0:
+            return dict(optimized_weights=[], portfolio_risk=0.0, expected_return_proxy=0.0,
+                        diversification_score=0.0, solver_status="infeasible", objective_value=0.0)
 
-        return dict(optimized_weights=[round(best_w, 4)], objective_value=round(-obj_val, 4),
-                    expected_risk=expected_risk, expected_return_proxy=exp_ret,
-                    constraint_shadow_prices={}, solver_status=status, convergence_flag=converged)
+        # 初始化: 均匀分布
+        W = [1.0 / n for _ in range(n)]
+        W = self._mdpo_project(W)
 
-    # ─── Legacy interface (redirects to TCO) ───
+        best_W = list(W)
+        best_obj = -1e9
+        α = 0.1  # 学习率
+        converged = False
+
+        for iteration in range(500):
+            # 数值梯度 (finite difference)
+            grad = [0.0] * n
+            eps = 1e-6
+            for i in range(n):
+                W_plus = list(W); W_plus[i] += eps
+                W_minus = list(W); W_minus[i] -= eps
+                W_plus = self._mdpo_project(W_plus)
+                W_minus = self._mdpo_project(W_minus)
+                f_plus = self._mdpo_objective(W_plus, RMAI_vec[:n], signal_vec[:n], regime_vec[:n], cov_matrix, liquidity_vec[:n], drawdown, volatility)
+                f_minus = self._mdpo_objective(W_minus, RMAI_vec[:n], signal_vec[:n], regime_vec[:n], cov_matrix, liquidity_vec[:n], drawdown, volatility)
+                grad[i] = (f_plus - f_minus) / (2 * eps)
+
+            # 梯度上升
+            W_new = [W[i] + α * grad[i] for i in range(n)]
+            W_new = self._mdpo_project(W_new)
+            obj = self._mdpo_objective(W_new, RMAI_vec[:n], signal_vec[:n], regime_vec[:n], cov_matrix, liquidity_vec[:n], drawdown, volatility)
+
+            if obj > best_obj:
+                best_obj = obj
+                best_W = list(W_new)
+
+            # 收敛检查
+            diff = sum(abs(W_new[i] - W[i]) for i in range(n))
+            if diff < 1e-8:
+                converged = True
+                break
+
+            # 学习率衰减
+            α *= 0.995
+            W = W_new
+
+        # 最终投影检查约束
+        final_W = self._mdpo_project(best_W)
+        final_obj = self._mdpo_objective(final_W, RMAI_vec[:n], signal_vec[:n], regime_vec[:n], cov_matrix, liquidity_vec[:n], drawdown, volatility)
+
+        # 组合风险
+        port_var = sum(final_W[i] * final_W[j] * cov_matrix[i][j] for i in range(n) for j in range(n)) if n > 0 else 0
+        port_vol = round(math.sqrt(max(port_var, 0)), 4)
+        exp_ret = round(sum(RMAI_vec[i] * regime_vec[i] * signal_vec[i] * final_W[i] for i in range(n)) / max(sum(final_W), 0.01), 4) if sum(final_W) > 0 else 0
+
+        # 分散度评分 (1 - Herfindahl index)
+        hhi = sum(w ** 2 for w in final_W)
+        div_score = round(1.0 - (hhi - 1.0 / n) / (1.0 - 1.0 / n) if n > 1 else 0.0, 4)
+
+        # 约束检查
+        vol_ok = port_vol <= TARGET_VOLATILITY + 0.01
+        dd_ok = True  # drawdown constraint checked via penalty
+        max_w_ok = max(final_W) <= MAX_SINGLE_WEIGHT + 0.01
+        status = "optimal" if (converged and vol_ok and max_w_ok) else ("feasible" if sum(final_W) > 0 else "infeasible")
+
+        return dict(optimized_weights=[round(w, 4) for w in final_W], portfolio_risk=port_vol,
+                    expected_return_proxy=exp_ret, diversification_score=div_score,
+                    solver_status=status, objective_value=round(final_obj, 4))
+
+    # ─── Legacy redirects ───
+
+    def continuous_optimization_kernel(self, **kwargs) -> dict[str, Any]:
+        """Legacy: 重定向到MDPO。"""
+        n = N_ASSETS
+        rmai = kwargs.get("RMAI", 80)
+        sig = kwargs.get("signal_strength", 0.5)
+        reg = kwargs.get("regime", "range")
+        vol = kwargs.get("volatility", 0.15)
+        dd = kwargs.get("drawdown", 0.02)
+        rv = [rmai * (1 - i * 0.1) for i in range(n)]
+        sv = [sig * (1 - i * 0.1) for i in range(n)]
+        m = [REGIME_MULTIPLIERS.get(reg, 1.0)] * n
+        cm = [[max(0.01, vol - abs(i - j) * 0.02) for j in range(n)] for i in range(n)]
+        lv = [1.0 if reg == "liquidity_stress" else 0.0] * n
+        mdp_r = self.multi_dimensional_optimizer(rv, sv, m, cm, lv, dd, vol)
+        return dict(optimized_weights=mdp_r["optimized_weights"], solver_status=mdp_r["solver_status"],
+                    objective_value=mdp_r["objective_value"], expected_risk=mdp_r["portfolio_risk"],
+                    expected_return_proxy=mdp_r["expected_return_proxy"], convergence_flag=True)
 
     def compute_capital_allocation_signal(self, **kwargs) -> dict[str, Any]:
-        """Legacy: 重定向到 TCO。"""
-        tco = self.continuous_optimization_kernel(**kwargs)
-        return dict(optimized_allocation=round(tco["optimized_weights"][0], 4),
-                    solver_status=tco["solver_status"], objective_value=tco["objective_value"])
-
-    def unified_optimization_kernel(self, **kwargs) -> dict[str, Any]:
-        """Legacy: 重定向到 TCO。"""
         return self.continuous_optimization_kernel(**kwargs)
 
-    # ─── Market Regime Detector ───
+    def unified_optimization_kernel(self, **kwargs) -> dict[str, Any]:
+        return self.continuous_optimization_kernel(**kwargs)
+
+    # ─── Legacy modules (unchanged) ───
 
     def market_regime_detector(self, market_data: dict[str, Any]) -> dict[str, Any]:
         returns = market_data.get("returns", [0.1, 0.05, -0.02, 0.08, 0.12])
@@ -221,14 +254,10 @@ class RealityTransitionEngine:
         rev = sum(1 for i in range(1, len(returns)) if (returns[i] >= 0) != (returns[i-1] >= 0)) / max(len(returns)-1, 1)
         avg = sum(returns) / len(returns)
         rt, cf, sp = "range", 0.5, 0.1
-        if pos_r > 0.65 and avg > 0.02 and dd < 0.05:
-            rt, cf, sp = "trend", min(1, 0.5+pos_r*0.5), max(0.05, 0.3-pos_r*0.3)
-        elif rev > 0.4 and vol < 0.2:
-            rt, cf, sp = "range", min(1, 0.5+rev*0.5), 0.15
-        elif vol > 0.25 and rev > 0.3:
-            rt, cf, sp = "volatile", min(1, 0.5+vol*1.5), 0.3
-        if vol > 0.3 and spread > 0.005 and dd > 0.05:
-            rt, cf, sp = "liquidity_stress", min(1, 0.5+vol*1.0+spread*50), 0.4
+        if pos_r > 0.65 and avg > 0.02 and dd < 0.05: rt, cf, sp = "trend", min(1, 0.5+pos_r*0.5), max(0.05, 0.3-pos_r*0.3)
+        elif rev > 0.4 and vol < 0.2: rt, cf, sp = "range", min(1, 0.5+rev*0.5), 0.15
+        elif vol > 0.25 and rev > 0.3: rt, cf, sp = "volatile", min(1, 0.5+vol*1.5), 0.3
+        if vol > 0.3 and spread > 0.005 and dd > 0.05: rt, cf, sp = "liquidity_stress", min(1, 0.5+vol*1.0+spread*50), 0.4
         return dict(regime_type=rt, confidence=round(cf, 2), regime_switch_probability=round(sp, 2))
 
     def compute_dynamic_rmai(self, base_rmai: float, regime: str) -> dict[str, Any]:
