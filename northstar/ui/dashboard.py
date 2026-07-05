@@ -499,5 +499,40 @@ def render_strategy_optimizer_panel(st: Any) -> None:
         st.caption(f"策略评分暂不可用: {exc}")
 
 
+def render_robustness_analysis(st: Any) -> None:
+    """渲染策略稳健性分析面板。"""
+    try:
+        from northstar.robustness.robustness_engine import run_robustness_analysis
+
+        with st.expander("🧪 策略稳健性分析面板", expanded=False):
+            report = run_robustness_analysis()
+            stability = report.get("stability_score", 0)
+            overfitting = report.get("overfitting_score", 100)
+            passed = stability > 70 and overfitting < 40
+            passed_icon = "✅" if passed else "❌"
+
+            c1, c2, c3 = st.columns(3)
+            c1.metric("稳健性评分", f"{stability:.0f}")
+            c2.metric("过拟合评分", f"{overfitting:.0f} (越低越好)")
+            c3.metric("通过测试", f"{passed_icon} {'是' if passed else '否'}")
+
+            st.markdown("**不同市场环境表现**")
+            rp = report.get("regime_performance", {})
+            for regime, data in rp.items():
+                icon = "🟢" if data.get("return_pct", 0) > 0 else "🔴"
+                st.markdown(f"- {regime.upper()}: {icon} 收益{data.get('return_pct', 0):+.1f}% | 胜率{data.get('win_rate', 0):.0%} | 回撤{data.get('max_drawdown_pct', 0):.1f}%")
+
+            st.markdown("**不同股票池表现**")
+            up = report.get("universe_performance", {})
+            for name, data in up.items():
+                icon = "🟢" if data.get("return_pct", 0) > 0 else "🔴"
+                st.markdown(f"- {name}: {icon} 收益{data.get('return_pct', 0):+.1f}% | 胜率{data.get('win_rate', 0):.0%}")
+
+            st.caption(f"最佳环境: {report.get('best_regime', '?').upper()} | 最差环境: {report.get('worst_regime', '?').upper()}")
+            st.caption("策略稳健性分析仅基于历史数据回测，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"策略稳健性分析暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
