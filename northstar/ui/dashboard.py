@@ -660,5 +660,52 @@ def render_capital_allocation_panel(st: Any) -> None:
         st.caption(f"资金分配暂不可用: {exc}")
 
 
+def render_northstar_control_panel(st: Any) -> None:
+    """渲染北极星系统控制面板。"""
+    try:
+        from northstar.engine.northstar_engine import NorthstarEngine
+
+        with st.expander("🧠 Northstar System Control Panel", expanded=False):
+            engine = NorthstarEngine(total_capital=100000.0)
+            report = engine.run_daily_cycle()
+
+            sd = report.get("system_decision", {})
+            action = sd.get("action", "HOLD")
+            confidence = sd.get("confidence", 0)
+            action_icon = {"TRADE": "✅", "HOLD": "⏸️", "REDUCE_RISK": "⚠️"}.get(action, "❓")
+
+            run_ok = report.get("run_success", False)
+            pt = report.get("paper_trading", {})
+            risk = report.get("risk_status", {})
+            gov = report.get("governance", {})
+            gc = gov.get("governance_check_passed", False)
+            rob = report.get("robustness", {})
+            rob_ok = rob.get("stability_score", 0) > 70
+            wf = report.get("walkforward", {})
+            wf_ok = wf.get("consistency_score", 0) > 70
+            n_strategies = gov.get("total_strategies", 0)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("运行状态", "✅ 成功" if run_ok else "❌ 失败")
+            c2.metric("系统决策", f"{action_icon} {action}")
+            c3.metric("置信度", f"{confidence:.0%}")
+            c4.metric("总收益", f'{pt.get("total_return_pct", 0):+.2f}%')
+
+            st.markdown("**系统检查项**")
+            st.markdown(f"- 风险等级: {risk.get('risk_level', '?')}")
+            st.markdown(f"- 治理检查: {'✅' if gc else '❌'}")
+            st.markdown(f"- 稳健性检查: {'✅' if rob_ok else '❌'} (评分{rob.get('stability_score', 0):.0f})")
+            st.markdown(f"- WalkForward: {'✅' if wf_ok else '❌'} (一致{wf.get('consistency_score', 0):.0f})")
+            st.markdown(f"- 策略数量: {n_strategies}")
+
+            st.markdown("**运行日志**")
+            for line in report.get("log", [])[-5:]:
+                st.markdown(f"- {line}")
+
+            st.caption("北极星系统控制面板显示今日完整决策闭环结果")
+    except Exception as exc:
+        st.caption(f"控制系统暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
