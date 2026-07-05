@@ -439,5 +439,65 @@ def render_risk_control_panel(st: Any) -> None:
         st.caption(f"风险控制面板暂不可用: {exc}")
 
 
+def render_strategy_optimizer_panel(st: Any) -> None:
+    """渲染策略评分与优化面板。"""
+    try:
+        from northstar.optimizer.strategy_evaluator import evaluate_system_performance
+        from northstar.optimizer.strategy_optimizer import optimize_parameters
+        from northstar.backtest.paper_trading_engine import PaperTradingEngine
+        from northstar.ai.market_intelligence import build_market_summary
+        from northstar.ai.stock_selector import generate_stock_signals
+        from northstar.risk.risk_manager import RiskManager
+
+        with st.expander("📊 策略评分与优化面板", expanded=False):
+            price_data = {
+                "SPY": [500.0, 502.0, 501.0, 505.0, 508.0],
+                "QQQ": [400.0, 403.0, 402.0, 406.0, 410.0],
+                "NVDA": [800.0, 810.0, 805.0, 820.0, 830.0],
+                "MSFT": [300.0, 302.0, 301.0, 305.0, 308.0],
+                "META": [200.0, 202.0, 201.0, 205.0, 208.0],
+                "AMD": [150.0, 152.0, 151.0, 155.0, 158.0],
+                "TSM": [100.0, 102.0, 101.0, 105.0, 108.0],
+                "AVGO": [500.0, 505.0, 502.0, 510.0, 515.0],
+                "PLTR": [50.0, 51.0, 50.5, 52.0, 53.0],
+                "CRM": [200.0, 202.0, 201.0, 205.0, 208.0],
+                "XLE": [80.0, 81.0, 80.5, 82.0, 83.0],
+            }
+            market = build_market_summary(price_data)
+            watchlist = ["NVDA", "MSFT", "META", "AMD", "TSM", "PLTR", "CRM", "XLE"]
+            signals = generate_stock_signals(market, watchlist, price_data)
+
+            engine = PaperTradingEngine(initial_capital=100000.0)
+            engine.execute_signals(signals, price_data)
+            report = engine.get_report()
+
+            rm = RiskManager(initial_capital=100000.0)
+            rm.update_portfolio(report["current_capital"], report["max_drawdown_pct"] / 100)
+            metrics = rm.get_risk_metrics()
+
+            # 策略评分
+            score = evaluate_system_performance(report, None, metrics)
+            grade_icon = {"A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴"}.get(score["grade"], "⚪")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("等级", f"{grade_icon} {score['grade']}")
+            c2.metric("总评分", f"{score['total_score']:.0f}")
+            c3.metric("收益评分", f"{score['return_score']:.0f}")
+            c4.metric("稳定性评分", f"{score['stability_score']:.0f}")
+
+            # 优化结果
+            opt = optimize_parameters(None)
+            is_optimal = opt["best_score"] <= opt["baseline_score"] + 1
+            st.metric("是否达到最优策略", "✅ 是" if is_optimal else "🔄 否")
+
+            st.markdown("**推荐参数调整建议**")
+            for s in opt.get("parameter_suggestions", []):
+                st.markdown(f"- {s}")
+
+            st.caption("策略评分与优化仅基于历史回测数据，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"策略评分暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
