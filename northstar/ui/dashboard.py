@@ -565,5 +565,54 @@ def render_walkforward_panel(st: Any) -> None:
         st.caption(f"Walk-Forward验证暂不可用: {exc}")
 
 
+def render_governance_panel(st: Any) -> None:
+    """渲染策略治理与系统收敛面板。"""
+    try:
+        from northstar.governance.strategy_governance_engine import StrategyGovernanceEngine
+
+        with st.expander("🧭 策略治理与系统收敛面板", expanded=False):
+            engine = StrategyGovernanceEngine()
+            # 注册示例策略
+            engine.register_strategy("momentum_v1", {"return_score": 85, "stability_score": 75, "consistency_score": 70, "max_drawdown": 6})
+            engine.register_strategy("defensive_v1", {"return_score": 70, "stability_score": 85, "consistency_score": 80, "max_drawdown": 4})
+            engine.register_strategy("breakout_v1", {"return_score": 55, "stability_score": 45, "consistency_score": 40, "max_drawdown": 15})
+            engine.register_strategy("mean_reversion_v1", {"return_score": 60, "stability_score": 55, "consistency_score": 50, "max_drawdown": 10})
+            engine.register_strategy("momentum_v2", {"return_score": 90, "stability_score": 80, "consistency_score": 75, "max_drawdown": 5})
+
+            engine.prune_strategies()
+            report = engine.get_report()
+
+            grade_counts = report.get("grade_distribution", {})
+            total = report.get("total_strategies", 0)
+            passed = report.get("governance_check_passed", False)
+            over_complex = report.get("is_over_complex", False)
+            complexity = report.get("system_complexity_score", 0)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("策略总数", total)
+            c2.metric("复杂度", f"{complexity:.0f}")
+            c3.metric("A级占比", f"{grade_counts.get('A', 0)}/{total}")
+            c4.metric("治理检查", "✅ 通过" if passed else "❌ 未通过")
+
+            if over_complex:
+                st.warning("⚠️ 系统过于复杂，需要收敛！")
+
+            st.markdown("**等级分布**")
+            for grade in ("A", "B", "C", "D"):
+                count = grade_counts.get(grade, 0)
+                icon = {"A": "🟢", "B": "🟡", "C": "🟠", "D": "🔴"}.get(grade, "⚪")
+                st.markdown(f"- {grade}: {icon} {count} 个策略")
+
+            st.markdown("**可运行策略组合**")
+            ap = report.get("active_portfolio", {})
+            for s in ap.get("strategies", []):
+                w = ap.get("weights", {}).get(s, 0)
+                st.markdown(f"- {s}: 权重 {w:.1%}")
+
+            st.caption("策略治理仅基于历史数据评分的生命周期管理")
+    except Exception as exc:
+        st.caption(f"策略治理暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
