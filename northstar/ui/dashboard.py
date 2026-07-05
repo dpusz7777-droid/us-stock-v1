@@ -614,5 +614,51 @@ def render_governance_panel(st: Any) -> None:
         st.caption(f"策略治理暂不可用: {exc}")
 
 
+def render_capital_allocation_panel(st: Any) -> None:
+    """渲染资金分配与组合控制面板。"""
+    try:
+        from northstar.allocation.capital_allocation_engine import CapitalAllocationEngine
+        from northstar.governance.strategy_governance_engine import StrategyGovernanceEngine
+
+        with st.expander("💰 资金分配与组合控制面板", expanded=False):
+            engine = StrategyGovernanceEngine()
+            engine.register_strategy("momentum_v2", {"return_score": 85, "stability_score": 75, "consistency_score": 70, "max_drawdown": 6})
+            engine.register_strategy("defensive_v1", {"return_score": 70, "stability_score": 85, "consistency_score": 80, "max_drawdown": 4})
+            engine.register_strategy("ai_alpha_v3", {"return_score": 80, "stability_score": 70, "consistency_score": 65, "max_drawdown": 8})
+            engine.prune_strategies()
+            governance_report = engine.get_report()
+
+            alloc_engine = CapitalAllocationEngine(total_capital=100000.0)
+            portfolio = governance_report.get("active_portfolio", {})
+            allocation = alloc_engine.allocate_capital(portfolio)
+
+            total = allocation.get("total_capital", 0)
+            cash = allocation.get("cash_reserve", 0)
+            exposure = allocation.get("exposure_pct", 0)
+            concentration = allocation.get("portfolio_concentration", 0)
+            constraints_ok = allocation.get("constraints_satisfied", True)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("总资金", f"${total:,.0f}")
+            c2.metric("现金储备", f"${cash:,.0f} ({cash/total*100:.0f}%)")
+            c3.metric("总暴露", f"{exposure:.0%}")
+            c4.metric("合规", "✅" if constraints_ok else "❌")
+
+            st.markdown("**各策略资金分配**")
+            sa = allocation.get("strategy_allocations", {})
+            for s, amt in sorted(sa.items(), key=lambda x: -x[1]):
+                pct = amt / total * 100 if total > 0 else 0
+                st.markdown(f"- {s}: ${amt:,.0f} ({pct:.1f}%)")
+
+            if concentration > 0.6:
+                st.warning(f"⚠️ 组合集中度较高（{concentration:.0%}），超过60%建议阈值")
+            else:
+                st.info(f"组合集中度 {concentration:.0%}，在安全范围内")
+
+            st.caption("资金分配仅基于模拟策略评分，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"资金分配暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
