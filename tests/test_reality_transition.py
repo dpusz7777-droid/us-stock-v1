@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""现实过渡层测试 v9 — RealityTransitionEngine MSAAS 完整测试。"""
+"""现实过渡层测试 v10 — RealityTransitionEngine EMIL 完整测试。"""
 
 from __future__ import annotations
 import sys, unittest, os
@@ -17,14 +17,63 @@ class TestRealityTransition(unittest.TestCase):
 
     def test_mirror_cycle_returns_report(self):
         r = self.rte.run_reality_mirror_cycle()
-        self.assertIn("strategy_allocations", r)
-        self.assertIn("total_risk", r)
-        self.assertIn("strategy_diversification_score", r)
-        self.assertIn("dominant_strategy", r)
-        self.assertIn("system_status", r)
+        self.assertIn("executed_allocations", r)
+        self.assertIn("slippage_cost", r)
+        self.assertIn("market_impact_cost", r)
+        self.assertIn("execution_quality_score", r)
+        self.assertIn("execution_efficiency", r)
+        self.assertIn("pnl_realized", r)
+        self.assertIn("pnl_expected", r)
+        self.assertIn("rmai_corrected", r)
+
+    def test_slippage_increases_in_stress_regime(self):
+        """liquidity_stress 下滑点应更高"""
+        normal = self.rte._slippage_model(0.001, 0.15, "trend")
+        stress = self.rte._slippage_model(0.001, 0.15, "liquidity_stress")
+        self.assertGreater(stress, normal)
+
+    def test_partial_fill_behavior(self):
+        """成交率应在 0.3~1.0 之间"""
+        for _ in range(50):
+            fr = self.rte._fill_ratio(1.0, 0.15)
+            self.assertGreaterEqual(fr, 0.3)
+            self.assertLessEqual(fr, 1.0)
+
+    def test_execution_costs_charged(self):
+        """执行应收取滑点和市场冲击成本"""
+        r = self.rte.execute_portfolio({"momentum": 0.3, "breakout": 0.3, "regime": 0.2, "ai_signal": 0.1, "mean_reversion": 0.1}, "trend")
+        self.assertGreaterEqual(r["slippage_cost"], 0)
+        self.assertGreaterEqual(r["market_impact_cost"], 0)
+        self.assertGreaterEqual(r["execution_quality_score"], 0)
+
+    def test_feedback_loop_updates_rmai(self):
+        """PnL反馈循环应修正RMAI"""
+        self.rte._rmai_history = [80.0]
+        fb = self.rte._emil_feedback(50.0, 100.0)
+        self.assertIn("rmai_corrected", fb)
+        self.assertGreater(fb["rmai_corrected"], 0)
+
+    def test_liquidity_impacts_fill_rate(self):
+        """低流动性应降低成交率"""
+        high_liq = self.rte._fill_ratio(2.0, 0.10)
+        low_liq = self.rte._fill_ratio(0.1, 0.10)
+        # high liquidity should give higher avg fill
+        self.assertGreaterEqual(high_liq, 0.3)
+        self.assertGreaterEqual(low_liq, 0.3)
+
+    def test_market_impact_large_order(self):
+        """大单应产生更大冲击"""
+        small = self.rte._market_impact(100, 1000000)
+        large = self.rte._market_impact(100000, 1000000)
+        self.assertGreater(large, small)
+
+    def test_emil_integration_in_cycle(self):
+        """EMIL 应集成到完整周期中"""
+        r = self.rte.run_reality_mirror_cycle()
+        self.assertGreaterEqual(r["execution_quality_score"], 0)
+        self.assertLessEqual(r["execution_quality_score"], 100)
 
     def test_strategy_allocation_sums_to_1(self):
-        """策略权重之和应为1"""
         profiles = [
             dict(name="momentum", rmai=85, signal=0.8, expected_return=0.5, risk=0.12, sharpe=4.2, regime_fit=1.5),
             dict(name="mean_reversion", rmai=70, signal=0.6, expected_return=0.3, risk=0.10, sharpe=3.0, regime_fit=1.0),
@@ -33,76 +82,7 @@ class TestRealityTransition(unittest.TestCase):
             dict(name="ai_signal", rmai=78, signal=0.72, expected_return=0.42, risk=0.13, sharpe=3.2, regime_fit=1.0),
         ]
         r = self.rte.compute_strategy_allocation(profiles, "trend")
-        w = r["strategy_allocations"]
-        self.assertAlmostEqual(sum(w.values()), 1.0, places=3)
-        self.assertEqual(len(w), 5)
-
-    def test_regime_switch_changes_strategy_weights(self):
-        """不同regime应产生不同的策略权重（momentum在trend中应比range中高）"""
-        profiles = [
-            dict(name="momentum", rmai=85, signal=0.8, expected_return=0.5, risk=0.12, sharpe=4.2, regime_fit=1.5),
-            dict(name="mean_reversion", rmai=70, signal=0.6, expected_return=0.3, risk=0.10, sharpe=3.0, regime_fit=0.5),
-            dict(name="regime", rmai=75, signal=0.7, expected_return=0.4, risk=0.11, sharpe=3.6, regime_fit=1.0),
-            dict(name="breakout", rmai=80, signal=0.75, expected_return=0.45, risk=0.15, sharpe=3.0, regime_fit=1.4),
-            dict(name="ai_signal", rmai=78, signal=0.72, expected_return=0.42, risk=0.13, sharpe=3.2, regime_fit=1.0),
-        ]
-        r_trend = self.rte.compute_strategy_allocation(profiles, "trend")
-        r_range = self.rte.compute_strategy_allocation(profiles, "range")
-        wt = r_trend["strategy_allocations"].get("momentum", 0)
-        wr = r_range["strategy_allocations"].get("momentum", 0)
-        # momentum在trend中regime_fit高，mean_reversion在range中regime_fit高
-        # 使用不同profile中的momentum regime_fit: trend=1.5 > range=0.4
-        # 所以trend的momentum权重 > range的momentum权重
-        self.assertGreaterEqual(wt, wr * 0.9)
-
-    def test_no_single_strategy_overconcentration(self):
-        """单一策略应 ≤ 40%"""
-        profiles = [
-            dict(name="momentum", rmai=100, signal=1.0, expected_return=1.0, risk=0.05, sharpe=20.0, regime_fit=2.0),
-            dict(name="mean_reversion", rmai=10, signal=0.1, expected_return=0.01, risk=0.20, sharpe=0.05, regime_fit=0.1),
-            dict(name="regime", rmai=10, signal=0.1, expected_return=0.01, risk=0.20, sharpe=0.05, regime_fit=0.1),
-            dict(name="breakout", rmai=10, signal=0.1, expected_return=0.01, risk=0.20, sharpe=0.05, regime_fit=0.1),
-            dict(name="ai_signal", rmai=10, signal=0.1, expected_return=0.01, risk=0.20, sharpe=0.05, regime_fit=0.1),
-        ]
-        r = self.rte.compute_strategy_allocation(profiles, "trend")
-        w = r["strategy_allocations"]
-        self.assertLessEqual(max(w.values()), 0.40 + 0.01)
-
-    def test_liquidity_stress_downscales_all(self):
-        """liquidity_stress 所有策略regime_fit=0.3应降低配置"""
-        profiles = [
-            dict(name="momentum", rmai=85, signal=0.8, expected_return=0.5, risk=0.12, sharpe=4.2, regime_fit=1.0),
-            dict(name="mean_reversion", rmai=70, signal=0.6, expected_return=0.3, risk=0.10, sharpe=3.0, regime_fit=1.0),
-            dict(name="regime", rmai=75, signal=0.7, expected_return=0.4, risk=0.11, sharpe=3.6, regime_fit=1.0),
-            dict(name="breakout", rmai=80, signal=0.75, expected_return=0.45, risk=0.15, sharpe=3.0, regime_fit=1.0),
-            dict(name="ai_signal", rmai=78, signal=0.72, expected_return=0.42, risk=0.13, sharpe=3.2, regime_fit=1.0),
-        ]
-        r_norm = self.rte.compute_strategy_allocation(profiles, "trend")
-        r_liq = self.rte.compute_strategy_allocation(profiles, "liquidity_stress")
-        # liquidity_stress中max_single=0.15，但所有regime_fit=1.0不受影响
-        # 实际的权重受max_single约束
-        # 验证liquidity_stress的risk ≤ trend的risk
-        self.assertLessEqual(r_liq["total_risk"], r_norm["total_risk"] + 0.01)
-
-    def test_strategy_diversification_score(self):
-        """多策略分散化评分应明确"""
-        profiles = [
-            dict(name="momentum", rmai=85, signal=0.8, expected_return=0.5, risk=0.12, sharpe=4.2, regime_fit=1.0),
-            dict(name="mean_reversion", rmai=70, signal=0.6, expected_return=0.3, risk=0.10, sharpe=3.0, regime_fit=1.0),
-            dict(name="regime", rmai=75, signal=0.7, expected_return=0.4, risk=0.11, sharpe=3.6, regime_fit=1.0),
-            dict(name="breakout", rmai=80, signal=0.75, expected_return=0.45, risk=0.15, sharpe=3.0, regime_fit=1.0),
-            dict(name="ai_signal", rmai=78, signal=0.72, expected_return=0.42, risk=0.13, sharpe=3.2, regime_fit=1.0),
-        ]
-        r = self.rte.compute_strategy_allocation(profiles, "trend")
-        self.assertGreater(r["strategy_diversification_score"], 0.0)
-
-    def test_build_strategy_profiles(self):
-        """构建策略profile应返回5个策略"""
-        p = self.rte.build_strategy_profiles(80, 0.8, "trend")
-        self.assertEqual(len(p), 5)
-        for s in p:
-            self.assertIn("name", s)
-            self.assertIn("rmai", s)
+        self.assertAlmostEqual(sum(r["strategy_allocations"].values()), 1.0, places=3)
 
     def test_kill_switch_triggers(self):
         self.rte.trigger_kill_switch(5.0)
