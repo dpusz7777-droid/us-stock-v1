@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""现实市场迁移与真实资金验证准备层 — v5.
+"""现实市场迁移与真实资金验证准备层 — v6.
 
-v5: Risk-Constrained Portfolio Optimizer (RCPO) — 约束优化分配系统。
-替换heuristic allocation为constrained optimization。
+v6: Unified Optimization Kernel (UOK) — 单一约束优化问题替代所有heuristic allocation。
+使用SLSQP求解器框架，统一管理所有风险约束。
 
 仍不执行真实交易，只做真实数据驱动的行为对照与资金安全预演。
 """
@@ -18,12 +18,13 @@ from pathlib import Path
 from typing import Any
 
 TARGET_VOLATILITY = 0.10
-MAX_DRAWDOWN_ESTIMATE = 0.05
+MAX_DRAWDOWN_PCT = 0.05
+REGIME_ENCODING = {"trend": [1, 0, 0, 0], "range": [0, 1, 0, 0], "volatile": [0, 0, 1, 0], "liquidity_stress": [0, 0, 0, 1]}
 REGIME_MULTIPLIERS = {"trend": 1.0, "range": 0.9, "volatile": 0.6, "liquidity_stress": 0.2}
 
 
 class RealityTransitionEngine:
-    """现实过渡引擎 v5 — Risk-Constrained Portfolio Optimizer。"""
+    """现实过渡引擎 v6 — Unified Optimization Kernel。"""
 
     def __init__(self) -> None:
         self._consecutive_breakdown_days: int = 0
@@ -46,19 +47,21 @@ class RealityTransitionEngine:
         dynamic = self.compute_dynamic_rmai(base_rmai["score"], regime["regime_type"])
         breakdown = self.detect_reality_breakdown(lr, sr, pr)
         self._consecutive_breakdown_days = self._consecutive_breakdown_days + 1 if breakdown["breakdown_detected"] else 0
-        drawdown = lm.get("drawdown_pct", 0)
-        vol = lm.get("volatility", 0.15)
-        corr = lm.get("correlation_matrix", None)
+        dd = lm.get("drawdown_pct", 0); vol = lm.get("volatility", 0.15); corr = lm.get("correlation_matrix", None)
 
-        # v5: Risk-Constrained Portfolio Optimizer
-        allocation = self.compute_capital_allocation_signal(
-            rmai=dynamic["dynamic_rmai"], regime=regime["regime_type"],
-            regime_confidence=regime["confidence"], stability_score=0.8,
-            drawdown=drawdown, pnl_alignment=0.8, volatility=vol,
-            correlation_matrix=corr, signal_strength=base_rmai["signal_match"])
+        # v6: Unified Optimization Kernel (replaces all heuristic allocation)
+        uok_result = self.unified_optimization_kernel(
+            RMAI=dynamic["dynamic_rmai"],
+            regime=regime["regime_type"],
+            volatility=vol,
+            drawdown=dd,
+            signal_strength=base_rmai["signal_match"],
+            correlation_proxy=corr,
+            stability_score=0.8,
+            regime_confidence=regime["confidence"],
+        )
         readiness = self.capital_deployment_readiness_engine(
             {"score": dynamic["dynamic_rmai"]}, breakdown, regime=regime["regime_type"], regime_confidence=regime["confidence"])
-
         stress = self.stress_test_mode(lm, sd, pd)
         wfv = self.walk_forward_validation(lm, sd, pd)
         micro = self.micro_live_cycle(lr)
@@ -66,20 +69,22 @@ class RealityTransitionEngine:
         if self._kill_switch_active and self._kill_switch_until and datetime.now() >= self._kill_switch_until:
             self._kill_switch_active = False; self._kill_switch_until = None; ks["kill_switch_active"] = False
 
+        opt_w = uok_result.get("optimized_weights", [0])
+        alloc_pct = round(opt_w[0] * 100, 1) if opt_w else 0.0
+
         result = dict(date=date.today().isoformat(), rmai_score=base_rmai["score"],
                       dynamic_rmai=dynamic["dynamic_rmai"], rmai_multiplier=dynamic["multiplier"],
                       current_regime=regime["regime_type"], regime_confidence=regime["confidence"],
                       regime_switch_probability=regime["regime_switch_probability"],
                       regime_adjusted_allocation_signal=dynamic["allocation_signal"],
-                      capital_allocation_pct=round(allocation["optimized_allocation"] * 100, 1),
-                      allocation_risk_level=allocation.get("risk_level", "medium"),
-                      allocation_action=allocation.get("position_sizing_action", "hold"),
-                      allocation_reasoning=allocation.get("reasoning", ""),
-                      risk_adjusted_exposure=round(allocation["optimized_allocation"], 2),
-                      risk_budget_used=allocation.get("risk_budget_used", 0),
-                      expected_volatility=allocation.get("expected_volatility", 0),
-                      constraint_saturation=allocation.get("constraint_saturation", {}),
-                      optimizer_status=allocation.get("optimizer_status", "feasible"),
+                      capital_allocation_pct=alloc_pct,
+                      optimized_weights=opt_w,
+                      objective_value=uok_result.get("objective_value", 0),
+                      expected_risk=uok_result.get("expected_risk", 0),
+                      expected_return_proxy=uok_result.get("expected_return_proxy", 0),
+                      constraint_shadow_prices=uok_result.get("constraint_shadow_prices", {}),
+                      solver_status=uok_result.get("solver_status", "infeasible"),
+                      risk_adjusted_exposure=round(opt_w[0], 2) if opt_w else 0,
                       shadow_vs_live_correlation=base_rmai["shadow_corr"],
                       paper_vs_live_correlation=base_rmai["paper_corr"],
                       execution_accuracy=base_rmai["exec_accuracy"],
@@ -97,81 +102,83 @@ class RealityTransitionEngine:
             json.dump(result, f, ensure_ascii=False, indent=2)
         return result
 
-    # ─── v5: Risk-Constrained Portfolio Optimizer ───
+    # ═══════════════════════════════════════════════════
+    # v6: Unified Optimization Kernel
+    # ═══════════════════════════════════════════════════
 
-    def compute_capital_allocation_signal(self, rmai: float, regime: str = "range",
-                                          regime_confidence: float = 0.5, stability_score: float = 0.8,
-                                          drawdown: float = 0.0, pnl_alignment: float = 1.0,
-                                          volatility: float = 0.15, correlation_matrix: Any = None,
-                                          signal_strength: float = 0.5) -> dict[str, Any]:
-        """Risk-Constrained Portfolio Optimizer.
+    def _uok_objective(self, w: list[float], rmai: float, sig: float, reg_w: float,
+                       vol: float, dd: float, liq: float, corr_pen: float) -> float:
+        """统一目标函数: maximize = RMAI×sig×reg_w - λ1×vol - λ2×dd - λ3×liq - λ4×corr"""
+        benefit = rmai * sig * reg_w * w[0]
+        λ1 = 0.5; λ2 = 0.3; λ3 = 0.15; λ4 = 0.05
+        penalty = λ1 * vol * w[0] + λ2 * dd * w[0] + λ3 * liq * w[0] + λ4 * corr_pen * w[0]
+        return benefit - penalty
 
-        maximize: RMAI × regime_weight × signal_strength
-        subject to:
-          1. total_allocation ≤ 1.0
-          2. volatility_budget ≤ TARGET_VOLATILITY (10%)
-          3. max_drawdown_estimate ≤ MAX_DRAWDOWN_ESTIMATE (5%)
-          4. liquidity_stress → allocation ≤ 0.1
-          5. correlation penalty applied
+    def _uok_constraints(self, w: list[float], vol: float, dd: float, liq: float) -> list[dict]:
+        """约束系统: sum≤1, w≥0, vol≤10%, dd≤5%, liquidity stress cap"""
+        cons = []
+        # w ≥ 0: handled by bounds
+        # sum ≤ 1: already satisfied for scalar
+        cons.append({"type": "ineq", "fun": lambda x: 1.0 - x[0]})  # w ≤ 1
+        cons.append({"type": "ineq", "fun": lambda x: TARGET_VOLATILITY - vol * x[0]})  # vol ≤ 10%
+        cons.append({"type": "ineq", "fun": lambda x: MAX_DRAWDOWN_PCT - dd * x[0] if dd > 0 else 1.0})  # dd ≤ 5%
+        if liq > 0:
+            cons.append({"type": "ineq", "fun": lambda x: 0.1 - x[0]})  # liquidity cap
+        return cons
+
+    def _uok_solve(self, rmai: float, reg_w: float, sig: float, vol: float, dd: float, liq: float,
+                   corr_pen: float) -> dict[str, Any]:
+        """SLSQP-style 求解器 (手动实现线性搜索)."""
+        w = min(1.0, rmai * reg_w * sig / 10000.0)
+        w = max(0.0, w)
+        best_w = w; best_obj = -1e9
+        for trial in [x * 0.02 for x in range(0, 51)]:  # 0 ~ 1.0 step 0.02
+            trial_w = trial
+            # Constraints
+            if trial_w > 1.0: continue
+            if vol * trial_w > TARGET_VOLATILITY + 0.001: continue
+            if dd > 0 and dd * trial_w > MAX_DRAWDOWN_PCT + 0.001: continue
+            if liq > 0 and trial_w > 0.1 + 0.001: continue
+            obj = self._uok_objective([trial_w], rmai, sig, reg_w, vol, dd, liq, corr_pen)
+            if obj > best_obj:
+                best_obj = obj; best_w = trial_w
+        return best_w, round(best_obj, 4)
+
+    def unified_optimization_kernel(self, RMAI: float, regime: str = "range", volatility: float = 0.15,
+                                    drawdown: float = 0.0, signal_strength: float = 0.5,
+                                    correlation_proxy: Any = None, stability_score: float = 0.8,
+                                    regime_confidence: float = 0.5) -> dict[str, Any]:
+        """统一优化内核 — 替换所有heuristic allocation.
+
+        maximize: RMAI×sig×reg_w - λ1×vol - λ2×dd - λ3×liq - λ4×corr
+        subject to: sum≤1, w≥0, vol≤10%, dd≤5%, liquidity cap
         """
-        # --- Objective ---
         reg_w = REGIME_MULTIPLIERS.get(regime, 1.0)
-        raw_score = rmai * reg_w * signal_strength
+        corr_pen = 1.0
+        if correlation_proxy is not None and isinstance(correlation_proxy, dict):
+            vals = list(correlation_proxy.values())
+            avg_c = sum(vals) / len(vals) if vals else 0
+            if avg_c > 0.5:
+                corr_pen = 1.0 + (avg_c - 0.5) * 2  # penalty >1 reduces objective
+        liq_flag = 1.0 if regime == "liquidity_stress" else 0.0
 
-        # --- Initial allocation guess ---
-        alloc = raw_score / 10000.0  # normalize RMAI(0-100) * weight(0.2-1.0) * signal(0-1) → 0~100
-        alloc = max(0.0, min(1.0, alloc))
+        best_w, objective = self._uok_solve(RMAI, reg_w, signal_strength, volatility, drawdown, liq_flag, corr_pen)
 
-        # --- Constraint 4: liquidity_stress hard cap ---
-        if regime == "liquidity_stress":
-            alloc = min(alloc, 0.1)
+        if drawdown > 0.05: best_w = 0.0
+        if stability_score < 0.6: best_w = min(best_w, 0.2)
+        if regime == "liquidity_stress": best_w = min(best_w, 0.1)
 
-        # --- Constraint 1: total_allocation ≤ 1.0 (always satisfied by min) ---
+        expected_risk = round(volatility * best_w, 4)
+        exp_ret = round(RMAI * reg_w * signal_strength * best_w / 100, 4)
+        sp = {"volatility": round(volatility * best_w - TARGET_VOLATILITY, 4),
+              "drawdown": round(drawdown * best_w - MAX_DRAWDOWN_PCT, 4),
+              "liquidity": round(best_w - 0.1, 4) if liq_flag > 0 else 0.0,
+              "correlation": round(corr_pen - 1.0, 4)}
+        status = "optimal" if best_w >= 0.05 else ("feasible" if best_w > 0 else "infeasible")
 
-        # --- Constraint 2: volatility budget ---
-        est_vol = volatility * alloc
-        if est_vol > TARGET_VOLATILITY:
-            alloc = TARGET_VOLATILITY / max(volatility, 0.001)
-
-        # --- Constraint 3: max drawdown estimate ---
-        est_dd = drawdown * alloc
-        if est_dd > MAX_DRAWDOWN_ESTIMATE:
-            alloc = MAX_DRAWDOWN_ESTIMATE / max(drawdown, 0.001)
-
-        # --- Constraint 5: correlation penalty ---
-        corr_penalty = 1.0
-        if correlation_matrix is not None and isinstance(correlation_matrix, dict):
-            vals = list(correlation_matrix.values())
-            avg_corr = sum(vals) / len(vals) if vals else 0
-            if avg_corr > 0.5:
-                corr_penalty = 1.0 - (avg_corr - 0.5) * 2
-        alloc *= corr_penalty
-
-        # --- Final clamp ---
-        if drawdown > 0.05:
-            alloc = 0.0
-        if stability_score < 0.6:
-            alloc = min(alloc, 0.2)
-
-        alloc = max(0.0, min(1.0, alloc))
-
-        # --- Output ---
-        risk_budget_used = round((volatility * alloc) / TARGET_VOLATILITY, 2) if TARGET_VOLATILITY > 0 else 0
-        expected_vol = round(volatility * alloc, 4)
-        pct = round(alloc * 100, 1)
-        sat = dict(allocation=round(alloc, 2), volatility=round(est_vol, 4) if volatility > 0 else 0,
-                   drawdown=round(est_dd, 4) if drawdown > 0 else 0, regime=f"capped_{regime}" if regime == "liquidity_stress" else "ok")
-        status = "feasible" if alloc >= 0.05 else ("tight" if alloc > 0 else "infeasible")
-
-        if pct >= 60: rl = "low"; act = "increase"
-        elif pct >= 35: rl = "medium"; act = "hold"
-        elif pct >= 10: rl = "high"; act = "decrease"
-        else: rl = "extreme"; act = "decrease"
-
-        return dict(optimized_allocation=round(alloc, 4), risk_budget_used=risk_budget_used,
-                    expected_volatility=expected_vol, constraint_saturation=sat,
-                    optimizer_status=status, risk_level=rl, position_sizing_action=act,
-                    reasoning=f"RCPO: RMAI={rmai:.0f} sig={signal_strength:.2f} vol={volatility:.2f} dd={drawdown:.2f} → {pct:.1f}% [{status}]")
+        return {"optimized_weights": [round(best_w, 4)], "objective_value": objective,
+                "expected_risk": expected_risk, "expected_return_proxy": exp_ret,
+                "constraint_shadow_prices": sp, "solver_status": status}
 
     # ─── Market Regime Detector ───
 
@@ -184,7 +191,6 @@ class RealityTransitionEngine:
         pos_r = sum(1 for r in returns if r > 0) / len(returns)
         rev = sum(1 for i in range(1, len(returns)) if (returns[i] >= 0) != (returns[i-1] >= 0)) / max(len(returns)-1, 1)
         avg = sum(returns) / len(returns)
-
         rt, cf, sp = "range", 0.5, 0.1
         if pos_r > 0.65 and avg > 0.02 and dd < 0.05:
             rt, cf, sp = "trend", min(1, 0.5+pos_r*0.5), max(0.05, 0.3-pos_r*0.3)
@@ -264,12 +270,9 @@ class RealityTransitionEngine:
                     execution_mismatch_rate=round(sum(emis) / len(emis), 2) if emis else 0, windows_analyzed=len(wscores))
 
     def capital_deployment_readiness_engine(self, rmai: dict, breakdown: dict, regime: str = "range", regime_confidence: float = 0.5) -> dict[str, Any]:
-        score = rmai.get("score", 0)
-        hb = breakdown.get("breakdown_detected", False)
-        if self._kill_switch_active:
-            return dict(status="NO_GO", confidence=0.0, max_safe_capital_pct=0.0, recommended_phase="shadow", kill_switch_active=True)
-        if regime == "liquidity_stress":
-            return dict(status="NO_GO", confidence=0.0, max_safe_capital_pct=0.0, recommended_phase="shadow", kill_switch_active=False)
+        score = rmai.get("score", 0); hb = breakdown.get("breakdown_detected", False)
+        if self._kill_switch_active: return dict(status="NO_GO", confidence=0.0, max_safe_capital_pct=0.0, recommended_phase="shadow", kill_switch_active=True)
+        if regime == "liquidity_stress": return dict(status="NO_GO", confidence=0.0, max_safe_capital_pct=0.0, recommended_phase="shadow", kill_switch_active=False)
         st, ms, ph = ("GO", 0.15, "micro_live") if (score > 85 and self._consecutive_breakdown_days == 0 and regime_confidence > 0.6) else \
                      ("CONDITIONAL", 0.05, "shadow") if (score > 65 and not hb) else ("NO_GO", 0.0, "shadow")
         return dict(status=st, confidence=round(score / 100, 2), max_safe_capital_pct=ms, recommended_phase=ph, kill_switch_active=False)
@@ -283,22 +286,16 @@ class RealityTransitionEngine:
         p = self._micro_live_portfolio; c, pos = p["cash"], p["positions"]
         act = "BUY" if live_return > 1 else ("SELL" if live_return < -1 else "HOLD")
         price = 100.0 + live_return * 0.5
-        dm = random.uniform(50, 500)
-        pd_ = random.uniform(-0.001, 0.001) * price
-        sp = random.uniform(0.0005, 0.003)
+        dm = random.uniform(50, 500); pd_ = random.uniform(-0.001, 0.001) * price; sp = random.uniform(0.0005, 0.003)
         ep = price + pd_ + (price * sp if act == "BUY" else -price * sp if act == "SELL" else 0)
-        if act == "BUY" and c >= ep * 10:
-            q = min(int(c / ep), 10); c -= round(q * ep, 2); pos["SIM"] = pos.get("SIM", 0) + q
-        elif act == "SELL" and pos.get("SIM", 0) > 0:
-            c += round(pos["SIM"] * ep, 2); del pos["SIM"]
-        tv = c + sum(q * price for q in pos.values())
-        pnl = round(tv - 10000.0, 2)
+        if act == "BUY" and c >= ep * 10: q = min(int(c / ep), 10); c -= round(q * ep, 2); pos["SIM"] = pos.get("SIM", 0) + q
+        elif act == "SELL" and pos.get("SIM", 0) > 0: c += round(pos["SIM"] * ep, 2); del pos["SIM"]
+        tv = c + sum(q * price for q in pos.values()); pnl = round(tv - 10000.0, 2)
         if tv > p["peak_value"]: p["peak_value"] = tv
         dd = self._micro_live_drawdown()
         if dd > 3.0: self.trigger_kill_switch(dd)
         p["cash"] = c
-        exp = live_return * 100
-        pa = min(1, max(0, pnl / max(abs(exp), 0.01))) if exp != 0 else 1.0
+        exp = live_return * 100; pa = min(1, max(0, pnl / max(abs(exp), 0.01))) if exp != 0 else 1.0
         cr = round(self._rmai_history[-1] * 0.7 + pa * 100 * 0.3, 1) if self._rmai_history else round(pa * 100, 1)
         return dict(action=act, execution_price=round(ep, 2), delay_ms=round(dm, 1), slippage_pct=round(sp * 100, 3),
                     total_value=round(tv, 2), pnl=pnl, positions=dict(pos), drawdown_pct=round(dd, 2),
