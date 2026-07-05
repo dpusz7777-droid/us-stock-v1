@@ -707,5 +707,48 @@ def render_northstar_control_panel(st: Any) -> None:
         st.caption(f"控制系统暂不可用: {exc}")
 
 
+def render_execution_reality_panel(st: Any) -> None:
+    """渲染执行现实层面板。"""
+    try:
+        from northstar.execution.execution_reality_engine import ExecutionRealityEngine
+
+        with st.expander("🌍 Execution Reality Layer", expanded=False):
+            ere = ExecutionRealityEngine()
+            signals = [
+                {"symbol": "NVDA", "signal": "BUY", "confidence": 0.85},
+                {"symbol": "MSFT", "signal": "BUY", "confidence": 0.75},
+                {"symbol": "AAPL", "signal": "WATCH", "confidence": 0.50},
+            ]
+            for s in signals:
+                ere.execute_realistic_trade(s)
+            report = ere.get_execution_report()
+
+            theoretical = report.get("theoretical_return", 0)
+            realistic = report.get("realistic_return", 0)
+            gap = report.get("execution_gap", 0)
+            fill_rate = report.get("fill_rate", 1.0)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("理论收益", f"{theoretical:+.2f}%")
+            c2.metric("现实收益", f"{realistic:+.2f}%")
+            c3.metric("执行差距", f"{gap:+.2f}%")
+            c4.metric("成交率", f"{fill_rate:.0%}")
+
+            st.markdown("**成本明细**")
+            st.markdown(f"- 滑点成本: {report.get('slippage_cost', 0):.2f}%")
+            st.markdown(f"- 市场冲击成本: {report.get('market_impact_cost', 0):.2f}%")
+            st.markdown(f"- 延迟成本: {report.get('latency_cost', 0):.2f}%")
+
+            is_tradable = realistic > 0 and gap > -5
+            st.metric("是否仍可交易", "✅ 是" if is_tradable else "❌ 否")
+
+            pending = report.get("pending_orders", 0)
+            if pending > 0:
+                st.warning(f"⚠️ {pending} 个订单未完全成交")
+            st.caption("执行现实层模拟真实市场摩擦，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"执行现实层暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
