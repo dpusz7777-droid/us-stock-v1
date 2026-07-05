@@ -374,5 +374,70 @@ def render_paper_trading(st: Any) -> None:
         st.caption(f"模拟交易暂不可用: {exc}")
 
 
+def render_risk_control_panel(st: Any) -> None:
+    """渲染风险控制面板。"""
+    try:
+        from northstar.risk.risk_manager import RiskManager
+        from northstar.ai.market_intelligence import build_market_summary
+        from northstar.ai.stock_selector import generate_stock_signals
+        from northstar.backtest.paper_trading_engine import PaperTradingEngine
+
+        price_data = {
+            "SPY": [500.0, 502.0, 501.0, 505.0, 508.0],
+            "QQQ": [400.0, 403.0, 402.0, 406.0, 410.0],
+            "NVDA": [800.0, 810.0, 805.0, 820.0, 830.0],
+            "MSFT": [300.0, 302.0, 301.0, 305.0, 308.0],
+            "META": [200.0, 202.0, 201.0, 205.0, 208.0],
+            "AMD": [150.0, 152.0, 151.0, 155.0, 158.0],
+            "TSM": [100.0, 102.0, 101.0, 105.0, 108.0],
+            "AVGO": [500.0, 505.0, 502.0, 510.0, 515.0],
+            "PLTR": [50.0, 51.0, 50.5, 52.0, 53.0],
+            "CRM": [200.0, 202.0, 201.0, 205.0, 208.0],
+            "XLE": [80.0, 81.0, 80.5, 82.0, 83.0],
+        }
+
+        with st.expander("🛡 风险控制面板", expanded=False):
+            market = build_market_summary(price_data)
+            watchlist = ["NVDA", "MSFT", "META", "AMD", "TSM", "PLTR", "CRM", "XLE"]
+            signals = generate_stock_signals(market, watchlist, price_data)
+
+            # 运行模拟交易并通过RiskManager控制
+            engine = PaperTradingEngine(initial_capital=100000.0)
+            rm = RiskManager(initial_capital=100000.0)
+            engine.execute_signals(signals, price_data)
+            report = engine.get_report()
+
+            # 更新RiskManager状态
+            rm.update_portfolio(report["current_capital"], report["max_drawdown_pct"] / 100)
+            total_used = sum(t["position_size"] for t in report.get("closed_trades", []))
+            rm.set_position_utilization(total_used, report["current_capital"])
+            for t in report.get("closed_trades", [])[:5]:
+                rm.record_trade_result(t["pnl_pct"])
+
+            metrics = rm.get_risk_metrics()
+            risk_icon = {"LOW": "🟢", "MEDIUM": "🟡", "HIGH": "🔴"}.get(metrics["risk_level"], "⚪")
+            trade_icon = "✅" if metrics["can_trade_today"] else "🔴"
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("当前风险等级", f"{risk_icon} {metrics['risk_level']}")
+            c2.metric("仓位利用率", f"{metrics['position_utilization']:.0%}")
+            c3.metric("最大回撤", f"{metrics['max_drawdown_pct']:.2f}%")
+            c4.metric("今日是否交易", trade_icon)
+
+            # 风险事件
+            events = metrics.get("recent_risk_events", [])
+            if events:
+                st.markdown("**最近风险事件**")
+                for evt in events[:3]:
+                    st.markdown(f"- {evt.get('type', '')}: {evt.get('detail', '')}")
+            else:
+                st.markdown("**最近风险事件**")
+                st.caption("暂无风险事件")
+
+            st.caption("风险控制面板仅用于监控模拟交易风险，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"风险控制面板暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
