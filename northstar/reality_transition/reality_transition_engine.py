@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""现实市场迁移与真实资金验证准备层 — v4.
+"""现实市场迁移与真实资金验证准备层 — v5.
 
-v4: Adaptive Capital Allocation — 连续仓位分配系统（0%~100%）。
-移除GO/NO-GO二值判断，改为continuous allocation。
+v5: Risk-Constrained Portfolio Optimizer (RCPO) — 约束优化分配系统。
+替换heuristic allocation为constrained optimization。
 
 仍不执行真实交易，只做真实数据驱动的行为对照与资金安全预演。
 """
@@ -17,11 +17,13 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+TARGET_VOLATILITY = 0.10
+MAX_DRAWDOWN_ESTIMATE = 0.05
 REGIME_MULTIPLIERS = {"trend": 1.0, "range": 0.9, "volatile": 0.6, "liquidity_stress": 0.2}
 
 
 class RealityTransitionEngine:
-    """现实过渡引擎 v4 — 自适应连续仓位分配系统。"""
+    """现实过渡引擎 v5 — Risk-Constrained Portfolio Optimizer。"""
 
     def __init__(self) -> None:
         self._consecutive_breakdown_days: int = 0
@@ -45,13 +47,15 @@ class RealityTransitionEngine:
         breakdown = self.detect_reality_breakdown(lr, sr, pr)
         self._consecutive_breakdown_days = self._consecutive_breakdown_days + 1 if breakdown["breakdown_detected"] else 0
         drawdown = lm.get("drawdown_pct", 0)
+        vol = lm.get("volatility", 0.15)
+        corr = lm.get("correlation_matrix", None)
 
-        # v4 adaptive allocation (replaces GO/NO-GO)
+        # v5: Risk-Constrained Portfolio Optimizer
         allocation = self.compute_capital_allocation_signal(
             rmai=dynamic["dynamic_rmai"], regime=regime["regime_type"],
             regime_confidence=regime["confidence"], stability_score=0.8,
-            drawdown=drawdown, pnl_alignment=0.8)
-        # Readiness (retained as informational, not gate)
+            drawdown=drawdown, pnl_alignment=0.8, volatility=vol,
+            correlation_matrix=corr, signal_strength=base_rmai["signal_match"])
         readiness = self.capital_deployment_readiness_engine(
             {"score": dynamic["dynamic_rmai"]}, breakdown, regime=regime["regime_type"], regime_confidence=regime["confidence"])
 
@@ -67,11 +71,15 @@ class RealityTransitionEngine:
                       current_regime=regime["regime_type"], regime_confidence=regime["confidence"],
                       regime_switch_probability=regime["regime_switch_probability"],
                       regime_adjusted_allocation_signal=dynamic["allocation_signal"],
-                      capital_allocation_pct=allocation["allocation_pct"],
-                      allocation_risk_level=allocation["risk_level"],
-                      allocation_action=allocation["position_sizing_action"],
-                      allocation_reasoning=allocation["reasoning"],
-                      risk_adjusted_exposure=round(allocation["allocation_pct"] / 100, 2),
+                      capital_allocation_pct=round(allocation["optimized_allocation"] * 100, 1),
+                      allocation_risk_level=allocation.get("risk_level", "medium"),
+                      allocation_action=allocation.get("position_sizing_action", "hold"),
+                      allocation_reasoning=allocation.get("reasoning", ""),
+                      risk_adjusted_exposure=round(allocation["optimized_allocation"], 2),
+                      risk_budget_used=allocation.get("risk_budget_used", 0),
+                      expected_volatility=allocation.get("expected_volatility", 0),
+                      constraint_saturation=allocation.get("constraint_saturation", {}),
+                      optimizer_status=allocation.get("optimizer_status", "feasible"),
                       shadow_vs_live_correlation=base_rmai["shadow_corr"],
                       paper_vs_live_correlation=base_rmai["paper_corr"],
                       execution_accuracy=base_rmai["exec_accuracy"],
@@ -89,39 +97,81 @@ class RealityTransitionEngine:
             json.dump(result, f, ensure_ascii=False, indent=2)
         return result
 
-    # ─── v4: Adaptive Capital Allocation Signal ───
+    # ─── v5: Risk-Constrained Portfolio Optimizer ───
 
     def compute_capital_allocation_signal(self, rmai: float, regime: str = "range",
                                           regime_confidence: float = 0.5, stability_score: float = 0.8,
-                                          drawdown: float = 0.0, pnl_alignment: float = 1.0) -> dict[str, Any]:
-        """计算连续仓位分配信号 (0%~100%)。
+                                          drawdown: float = 0.0, pnl_alignment: float = 1.0,
+                                          volatility: float = 0.15, correlation_matrix: Any = None,
+                                          signal_strength: float = 0.5) -> dict[str, Any]:
+        """Risk-Constrained Portfolio Optimizer.
 
-        公式: final = base × regime_mult × stability_mult × risk_penalty × confidence
+        maximize: RMAI × regime_weight × signal_strength
+        subject to:
+          1. total_allocation ≤ 1.0
+          2. volatility_budget ≤ TARGET_VOLATILITY (10%)
+          3. max_drawdown_estimate ≤ MAX_DRAWDOWN_ESTIMATE (5%)
+          4. liquidity_stress → allocation ≤ 0.1
+          5. correlation penalty applied
         """
-        base = rmai / 100.0
-        reg_mult = REGIME_MULTIPLIERS.get(regime, 1.0)
-        stab_mult = min(max(stability_score, 0), 1.0)
-        risk_penalty = max(0.0, 1.0 - drawdown * 2)
-        final = base * reg_mult * stab_mult * risk_penalty * regime_confidence
+        # --- Objective ---
+        reg_w = REGIME_MULTIPLIERS.get(regime, 1.0)
+        raw_score = rmai * reg_w * signal_strength
 
-        # Enforce risk guardrails
+        # --- Initial allocation guess ---
+        alloc = raw_score / 10000.0  # normalize RMAI(0-100) * weight(0.2-1.0) * signal(0-1) → 0~100
+        alloc = max(0.0, min(1.0, alloc))
+
+        # --- Constraint 4: liquidity_stress hard cap ---
         if regime == "liquidity_stress":
-            final = min(final, 0.1)
-        if drawdown > 0.05:
-            final = 0.0
-        if stability_score < 0.6:
-            final = min(final, 0.2)
+            alloc = min(alloc, 0.1)
 
-        final = max(0.0, min(1.0, final))
-        pct = round(final * 100, 1)
+        # --- Constraint 1: total_allocation ≤ 1.0 (always satisfied by min) ---
+
+        # --- Constraint 2: volatility budget ---
+        est_vol = volatility * alloc
+        if est_vol > TARGET_VOLATILITY:
+            alloc = TARGET_VOLATILITY / max(volatility, 0.001)
+
+        # --- Constraint 3: max drawdown estimate ---
+        est_dd = drawdown * alloc
+        if est_dd > MAX_DRAWDOWN_ESTIMATE:
+            alloc = MAX_DRAWDOWN_ESTIMATE / max(drawdown, 0.001)
+
+        # --- Constraint 5: correlation penalty ---
+        corr_penalty = 1.0
+        if correlation_matrix is not None and isinstance(correlation_matrix, dict):
+            vals = list(correlation_matrix.values())
+            avg_corr = sum(vals) / len(vals) if vals else 0
+            if avg_corr > 0.5:
+                corr_penalty = 1.0 - (avg_corr - 0.5) * 2
+        alloc *= corr_penalty
+
+        # --- Final clamp ---
+        if drawdown > 0.05:
+            alloc = 0.0
+        if stability_score < 0.6:
+            alloc = min(alloc, 0.2)
+
+        alloc = max(0.0, min(1.0, alloc))
+
+        # --- Output ---
+        risk_budget_used = round((volatility * alloc) / TARGET_VOLATILITY, 2) if TARGET_VOLATILITY > 0 else 0
+        expected_vol = round(volatility * alloc, 4)
+        pct = round(alloc * 100, 1)
+        sat = dict(allocation=round(alloc, 2), volatility=round(est_vol, 4) if volatility > 0 else 0,
+                   drawdown=round(est_dd, 4) if drawdown > 0 else 0, regime=f"capped_{regime}" if regime == "liquidity_stress" else "ok")
+        status = "feasible" if alloc >= 0.05 else ("tight" if alloc > 0 else "infeasible")
 
         if pct >= 60: rl = "low"; act = "increase"
         elif pct >= 35: rl = "medium"; act = "hold"
         elif pct >= 10: rl = "high"; act = "decrease"
         else: rl = "extreme"; act = "decrease"
 
-        return dict(allocation_pct=pct, risk_level=rl, position_sizing_action=act,
-                    reasoning=f"RMAI={rmai:.0f} regime={regime} mult={reg_mult:.1f} stab={stab_mult:.1f} risk_pen={risk_penalty:.2f} → {pct:.1f}%")
+        return dict(optimized_allocation=round(alloc, 4), risk_budget_used=risk_budget_used,
+                    expected_volatility=expected_vol, constraint_saturation=sat,
+                    optimizer_status=status, risk_level=rl, position_sizing_action=act,
+                    reasoning=f"RCPO: RMAI={rmai:.0f} sig={signal_strength:.2f} vol={volatility:.2f} dd={drawdown:.2f} → {pct:.1f}% [{status}]")
 
     # ─── Market Regime Detector ───
 
