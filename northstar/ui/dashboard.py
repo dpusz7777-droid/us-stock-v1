@@ -871,5 +871,44 @@ def render_market_calibration_panel(st: Any) -> None:
         st.caption(f"市场校准暂不可用: {exc}")
 
 
+def render_reality_transition_panel(st: Any) -> None:
+    """渲染现实迁移控制面板。"""
+    try:
+        from northstar.reality_transition.reality_transition_engine import RealityTransitionEngine
+
+        with st.expander("🌐 Reality Transition Control Panel", expanded=False):
+            rte = RealityTransitionEngine()
+            report = rte.run_reality_mirror_cycle()
+
+            rmai = report.get("rmai_score", 0)
+            shadow_corr = report.get("shadow_vs_live_correlation", 0)
+            paper_corr = report.get("paper_vs_live_correlation", 0)
+            exec_acc = report.get("execution_accuracy", 0)
+            breakdown = report.get("breakdown_detected", False)
+            readiness = report.get("capital_readiness", {})
+            phase = readiness.get("recommended_phase", "shadow")
+
+            rmai_status = "🟢 Highly Aligned" if rmai > 85 else ("🟡 Partially Aligned" if rmai > 60 else "🔴 Misaligned")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("RMAI", f"{rmai:.0f}")
+            c2.metric("Shadow 对齐", f"{shadow_corr:.0%}")
+            c3.metric("Paper 对齐", f"{paper_corr:.0%}")
+            c4.metric("执行准确率", f"{exec_acc:.0%}")
+
+            st.markdown(f"**系统状态**: {rmai_status}")
+            st.markdown(f"**崩溃检测**: {'⚠️ 是' if breakdown else '✅ 否'}")
+            st.markdown(f"**资金部署**: {readiness.get('status', '?')} (置信度{readiness.get('confidence', 0):.0%})")
+            st.markdown(f"**推荐阶段**: {phase}")
+            st.markdown(f"**最大安全资金比例**: {readiness.get('max_safe_capital_pct', 0):.0%}")
+
+            if breakdown:
+                st.error(f"崩溃类型: {report.get('breakdown_type', '?')}")
+
+            st.caption("现实过渡层仅用于真实数据对照验证，不执行真实交易")
+    except Exception as exc:
+        st.caption(f"现实过渡暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
