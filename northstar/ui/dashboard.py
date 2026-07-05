@@ -750,5 +750,54 @@ def render_execution_reality_panel(st: Any) -> None:
         st.caption(f"执行现实层暂不可用: {exc}")
 
 
+def render_live_capital_governance_panel(st: Any) -> None:
+    """渲染实盘资金安全闸门面板。"""
+    try:
+        from northstar.capital.live_capital_governance_engine import LiveCapitalGovernanceEngine
+
+        with st.expander("🚦 实盘资金安全闸门面板", expanded=False):
+            engine = LiveCapitalGovernanceEngine(total_capital=100000.0)
+            metrics = {
+                "governance": {"grade_distribution": {"A": 2, "B": 1, "C": 0, "D": 0}, "total_strategies": 3},
+                "robustness": {"stability_score": 85},
+                "walkforward": {"consistency_score": 80},
+                "execution": {"execution_gap": -1.5},
+                "risk_status": {"risk_level": "LOW"},
+            }
+            report = engine.evaluate_live_readiness(metrics)
+
+            status = report.get("status", "NO_GO")
+            score = report.get("readiness_score", 0)
+            phase = report.get("phase", 1)
+            phase_label = report.get("capital_allocation_phase", "?")
+            frozen = report.get("freeze_status", False)
+            cb_active = report.get("circuit_breaker_active", False)
+            risk_cap = report.get("risk_capital", 0)
+            safe_cap = report.get("safe_capital", 0)
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("实盘状态", "🟢 GO" if status == "GO" else "🔴 NO_GO")
+            c2.metric("准备评分", f"{score:.0f}")
+            c3.metric("资金阶段", f"Phase {phase} ({phase_label})")
+            c4.metric("冻结状态", "🔒 冻结" if frozen else "✅ 正常")
+
+            st.markdown("**资金分布**")
+            st.markdown(f"- 风险资金: ${risk_cap:,.0f}")
+            st.markdown(f"- 安全资金: ${safe_cap:,.0f}")
+            st.markdown(f"- 熔断状态: {'⚠️ 已触发' if cb_active else '✅ 正常'}")
+
+            reasons = report.get("blocking_reasons", [])
+            if reasons:
+                st.error("**阻止实盘的原因**")
+                for r in reasons:
+                    st.markdown(f"- {r}")
+            else:
+                st.success("✅ 未发现阻止实盘的问题")
+
+            st.caption("实盘资金安全闸门仅用于风险评估，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"实盘资金闸门暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
