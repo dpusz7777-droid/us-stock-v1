@@ -836,5 +836,40 @@ def render_shadow_trading_panel(st: Any) -> None:
         st.caption(f"影子交易暂不可用: {exc}")
 
 
+def render_market_calibration_panel(st: Any) -> None:
+    """渲染市场现实校准面板。"""
+    try:
+        from northstar.calibration.market_calibration_engine import MarketCalibrationEngine
+
+        with st.expander("🌍 Market Calibration Control Panel", expanded=False):
+            mce = MarketCalibrationEngine()
+            report = mce.calibration_cycle({"real_return": 2.0}, {"shadow_return": 1.8}, {"paper_return": 2.5})
+
+            alignment = report.get("reality_alignment_score", 0)
+            bias = report.get("bias_detection", {})
+            drift = report.get("drift_detected", False)
+            health = report.get("system_health", "?")
+            cm = report.get("adjustments", {}).get("confidence_multiplier", 1.0)
+
+            health_icon = {"calibrated": "🟢", "needs_recalibration": "🟡", "misaligned": "🔴"}.get(health, "⚪")
+            aligned = "Aligned" if alignment > 80 else ("Partially Misaligned" if alignment > 50 else "Misaligned")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("对齐评分", f"{alignment:.0f}")
+            c2.metric("系统健康", f"{health_icon} {health}")
+            c3.metric("置信度系数", f"{cm:.2f}")
+            c4.metric("漂移检测", "⚠️ 是" if drift else "✅ 否")
+
+            st.markdown("**偏差检测**")
+            st.markdown(f"- 乐观偏差: {bias.get('optimism_bias', 0):+.2f}%")
+            st.markdown(f"- 执行偏差: {bias.get('execution_bias', 0):+.2f}%")
+            st.markdown(f"- 时序偏差: {bias.get('timing_bias', 0):+.2f}%")
+
+            st.metric(f"系统状态: **{aligned}**")
+            st.caption("市场校准层对比真实市场数据，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"市场校准暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
