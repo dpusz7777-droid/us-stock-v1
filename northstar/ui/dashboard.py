@@ -909,6 +909,12 @@ def render_reality_transition_panel(st: Any) -> None:
             if breakdown:
                 st.error(f"崩溃类型: {report.get('breakdown_type', '?')}")
 
+            st.markdown("**🌍 市场状态 (v3)**")
+            st.markdown(f"- 当前regime: **{report.get('current_regime', '?')}** (置信度{report.get('regime_confidence', 0):.0%})")
+            st.markdown(f"- 切换概率: {report.get('regime_switch_probability', 0):.0%}")
+            st.markdown(f"- 动态RMAI: {report.get('dynamic_rmai', 0):.0f} (乘数{report.get('rmai_multiplier', 0):.2f})")
+            st.markdown(f"- 信号分配: {report.get('regime_adjusted_allocation_signal', 0):.0f}/100")
+
             st.markdown("**🧪 Stress Test**")
             st.markdown(f"- RMAI波动率: {stress.get('rmai_volatility', 0):.1f}")
             st.markdown(f"- Breakdown频率: {stress.get('breakdown_trigger_frequency', 0):.0%}")
@@ -921,9 +927,9 @@ def render_reality_transition_panel(st: Any) -> None:
             st.markdown("**🔬 Micro-Live Sandbox**")
             st.markdown(f"- 操作: {micro.get('action', '?')} | PnL: ${micro.get('pnl', 0):,.0f}")
             st.markdown(f"- 滑点: {micro.get('slippage_pct', 0):.3f}% | 延迟: {micro.get('delay_ms', 0):.0f}ms")
-            st.markdown(f"- RMAI修正: {micro.get('rmai_corrected', 0):.0f}")
+            st.markdown(f"- RMAI修正: {micro.get('rmai_corrected', 0):.0f} | PnL对齐: {micro.get('pnl_alignment', 0):.2f}")
 
-            st.caption("现实过渡层v2 — stress/walk-forward/kill-switch/micro-live 闭环")
+            st.caption("现实过渡层v3 — 市场状态感知 + 动态RMAI + stress/walk-forward/micro-live 闭环")
     except Exception as exc:
         st.caption(f"现实过渡暂不可用: {exc}")
 
