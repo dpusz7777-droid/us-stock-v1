@@ -876,7 +876,7 @@ def render_reality_transition_panel(st: Any) -> None:
     try:
         from northstar.reality_transition.reality_transition_engine import RealityTransitionEngine
 
-        with st.expander("🌐 Reality Transition Control Panel", expanded=False):
+        with st.expander("🌐 Reality Transition Control Panel (v2)", expanded=False):
             rte = RealityTransitionEngine()
             report = rte.run_reality_mirror_cycle()
 
@@ -887,6 +887,10 @@ def render_reality_transition_panel(st: Any) -> None:
             breakdown = report.get("breakdown_detected", False)
             readiness = report.get("capital_readiness", {})
             phase = readiness.get("recommended_phase", "shadow")
+            ks = report.get("kill_switch", {})
+            stress = report.get("stress_test", {})
+            wfv = report.get("walk_forward", {})
+            micro = report.get("micro_live_sandbox", {})
 
             rmai_status = "🟢 Highly Aligned" if rmai > 85 else ("🟡 Partially Aligned" if rmai > 60 else "🔴 Misaligned")
 
@@ -897,15 +901,29 @@ def render_reality_transition_panel(st: Any) -> None:
             c4.metric("执行准确率", f"{exec_acc:.0%}")
 
             st.markdown(f"**系统状态**: {rmai_status}")
-            st.markdown(f"**崩溃检测**: {'⚠️ 是' if breakdown else '✅ 否'}")
+            st.markdown(f"**崩溃检测**: {'⚠️ 是' if breakdown else '✅ 否'} ({report.get('consecutive_breakdown_days', 0)}天)")
             st.markdown(f"**资金部署**: {readiness.get('status', '?')} (置信度{readiness.get('confidence', 0):.0%})")
-            st.markdown(f"**推荐阶段**: {phase}")
-            st.markdown(f"**最大安全资金比例**: {readiness.get('max_safe_capital_pct', 0):.0%}")
+            st.markdown(f"**推荐阶段**: {phase} | **最大安全资金**: {readiness.get('max_safe_capital_pct', 0):.0%}")
+            st.markdown(f"**Kill Switch**: {'🔴 激活' if ks.get('kill_switch_active') else '✅ 正常'}")
 
             if breakdown:
                 st.error(f"崩溃类型: {report.get('breakdown_type', '?')}")
 
-            st.caption("现实过渡层仅用于真实数据对照验证，不执行真实交易")
+            st.markdown("**🧪 Stress Test**")
+            st.markdown(f"- RMAI波动率: {stress.get('rmai_volatility', 0):.1f}")
+            st.markdown(f"- Breakdown频率: {stress.get('breakdown_trigger_frequency', 0):.0%}")
+            st.markdown(f"- 误放行率: {stress.get('false_go_rate', 0):.2%} | 误杀率: {stress.get('false_no_go_rate', 0):.2%}")
+
+            st.markdown("**📊 Walk-Forward**")
+            st.markdown(f"- 稳定性: {wfv.get('stability_score', 0):.0f} | Regime敏感: {wfv.get('regime_sensitivity', '?')}")
+            st.markdown(f"- 窗口数: {wfv.get('windows_analyzed', 0)} | 对齐漂移: {wfv.get('avg_alignment_drift', 0):.1f}")
+
+            st.markdown("**🔬 Micro-Live Sandbox**")
+            st.markdown(f"- 操作: {micro.get('action', '?')} | PnL: ${micro.get('pnl', 0):,.0f}")
+            st.markdown(f"- 滑点: {micro.get('slippage_pct', 0):.3f}% | 延迟: {micro.get('delay_ms', 0):.0f}ms")
+            st.markdown(f"- RMAI修正: {micro.get('rmai_corrected', 0):.0f}")
+
+            st.caption("现实过渡层v2 — stress/walk-forward/kill-switch/micro-live 闭环")
     except Exception as exc:
         st.caption(f"现实过渡暂不可用: {exc}")
 
