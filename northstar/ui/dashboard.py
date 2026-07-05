@@ -534,5 +534,36 @@ def render_robustness_analysis(st: Any) -> None:
         st.caption(f"策略稳健性分析暂不可用: {exc}")
 
 
+def render_walkforward_panel(st: Any) -> None:
+    """渲染Walk-Forward验证面板。"""
+    try:
+        from northstar.ensemble.walkforward_engine import run_walkforward_test
+
+        with st.expander("🧭 Walk-Forward 验证面板", expanded=False):
+            report = run_walkforward_test()
+            windows = report.get("windows", [])
+            consistency = report.get("time_consistency_score", 0)
+            decay = report.get("performance_decay", 0)
+            passed = consistency > 70 and decay < 20
+            passed_icon = "✅" if passed else "❌"
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("时间一致性", f"{consistency:.0f}")
+            c2.metric("性能衰减", f"{decay:.1f}%")
+            c3.metric("窗口数量", len(windows))
+            c4.metric("通过测试", f"{passed_icon} {'是' if passed else '否'}")
+
+            st.markdown("**各窗口收益**")
+            for w in windows:
+                icon = "🟢" if w.get("test_return_pct", 0) > 0 else "🔴"
+                st.markdown(f"- 窗口{w['window_id']}: {icon} 训练{w.get('train_return_pct', 0):+.1f}% → 测试{w.get('test_return_pct', 0):+.1f}%")
+
+            st.markdown(f"**市场依赖**: {report.get('regime_dependency', '?')}")
+            st.markdown(f"**最佳窗口**: #{report.get('best_window', '?')} | **最差窗口**: #{report.get('worst_window', '?')}")
+            st.caption("Walk-Forward验证仅基于历史数据滚动回测，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"Walk-Forward验证暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
