@@ -799,5 +799,42 @@ def render_live_capital_governance_panel(st: Any) -> None:
         st.caption(f"实盘资金闸门暂不可用: {exc}")
 
 
+def render_shadow_trading_panel(st: Any) -> None:
+    """渲染影子实盘控制面板。"""
+    try:
+        from northstar.shadow.shadow_trading_engine import ShadowTradingEngine
+
+        with st.expander("🧪 Shadow Trading Control Panel", expanded=False):
+            shadow = ShadowTradingEngine()
+            report = shadow.run_shadow_cycle()
+
+            paper = report.get("paper_return", 0)
+            shadow_ret = report.get("shadow_return", 0)
+            gap = report.get("execution_gap", 0)
+            drift = report.get("drift_detected", False)
+            consistency = report.get("consistency_score", 0)
+            risk_align = report.get("risk_alignment", True)
+
+            status = "stable" if consistency > 80 else ("warning" if consistency > 50 else "unstable")
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Paper 收益", f"{paper:+.2f}%")
+            c2.metric("Shadow 收益", f"{shadow_ret:+.2f}%")
+            c3.metric("执行差距", f"{gap:+.2f}%")
+            c4.metric("漂移检测", "⚠️ 是" if drift else "✅ 否")
+
+            st.metric("一致性评分", f"{consistency:.0f}/100 ({status.upper()})")
+            st.metric("风险对齐", "✅" if risk_align else "❌")
+
+            if drift:
+                st.warning("**漂移原因**")
+                for r in report.get("drift_reasons", []):
+                    st.markdown(f"- {r}")
+
+            st.caption("Shadow Trading 仅模拟实时市场运行，不执行真实交易")
+    except Exception as exc:
+        st.caption(f"影子交易暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
