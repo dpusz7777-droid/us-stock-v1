@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""现实过渡层测试 v12 — RealityTransitionEngine CCDS 完整测试。"""
+"""现实过渡层测试 v13 — RealityTransitionEngine LTTP 完整测试。"""
 
 from __future__ import annotations
 import sys, unittest, os
@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).parent.parent
 if str(PROJECT_ROOT) not in sys.path: sys.path.insert(0, str(PROJECT_ROOT))
 
 from northstar.reality_transition.reality_transition_engine import (
-    RealityTransitionEngine, BrokerAdapter, ExecutionBiasModel,
+    RealityTransitionEngine, BrokerAdapter, LiveBrokerAdapter, ExecutionBiasModel,
 )
 
 
@@ -19,71 +19,68 @@ class TestRealityTransition(unittest.TestCase):
 
     def test_mirror_cycle_returns_report(self):
         r = self.rte.run_reality_mirror_cycle()
-        self.assertIn("current_tier", r)
-        self.assertIn("allowed_capital_pct", r)
-        self.assertIn("next_tier", r)
-        self.assertIn("upgrade_ready", r)
-        self.assertIn("downgrade_triggered", r)
-        self.assertIn("exposure_limit", r)
-        self.assertIn("risk_status", r)
+        self.assertIn("live_mode", r)
+        self.assertIn("pre_flight_check", r)
+        self.assertIn("capital_exposure", r)
+        self.assertIn("execution_status", r)
+        self.assertIn("pnl_deviation", r)
+        self.assertIn("broker_status", r)
 
-    def test_tier_progression_logic(self):
-        """tier 应从 0 开始，满足条件后升级"""
-        self.assertEqual(self.rte._tier, 0)
-        metrics = dict(execution_divergence_score=95, pnl_divergence=1.0, slippage_divergence=5.0,
-                       stability_score=0.9, regime="trend", kill_switch=False,
-                       consecutive_loss_days=0, total_pnl=0)
-        r = self.rte.compute_capital_tier(metrics)
-        self.assertEqual(r["tier_name"], "micro_live")  # should upgrade to tier_1
-        self.assertEqual(r["allowed_pct"], 0.01)
+    def test_pre_live_check_blocks_unsafe_start(self):
+        """不安全状态应阻止实盘"""
+        self.rte._tier = 0
+        r = self.rte.pre_live_check()
+        self.assertFalse(r["all_clear"])
+        self.assertGreater(len(r["blocked_reasons"]), 0)
 
-    def test_automatic_downgrade_on_loss(self):
-        """大回撤应自动降级到 tier_0"""
-        self.rte._micro_live_portfolio["peak_value"] = 10000.0
-        metrics = dict(execution_divergence_score=95, pnl_divergence=1.0, slippage_divergence=5.0,
-                       stability_score=0.9, regime="trend", kill_switch=False,
-                       consecutive_loss_days=0, total_pnl=-600)
-        r = self.rte.compute_capital_tier(metrics)
-        self.assertEqual(r["tier"], 0)
+    def test_pre_live_check_allows_safe_start(self):
+        """安全状态应允许实盘"""
+        self.rte._tier = 1
+        self.rte._divergence_history = [95]
+        self.rte._execution_bias.bias = 0.01
+        self.rte._kill_switch_active = False
+        self.rte._live_broker.status = "ready"
+        r = self.rte.pre_live_check()
+        self.assertTrue(r["all_clear"])
 
-    def test_exposure_never_exceeds_tier_limit(self):
-        """exposure 不应超过 tier 限制"""
-        for tier in range(5):
-            limits = {0: 0.0, 1: 0.01, 2: 0.05, 3: 0.25, 4: 1.0}
-            self.assertEqual(self.rte.execute_live_order({"symbol": "NVDA", "qty": 100, "price": 800})["executed"], False)
-        # tier_0 should reject
-        self.assertEqual(self.rte._tier, 0)
-        r = self.rte.execute_live_order({"symbol": "NVDA", "qty": 100, "price": 800})
-        self.assertFalse(r["executed"])
+    def test_capital_limit_enforced_1_percent(self):
+        """capital_exposure 应为 1% 当 micro_live_real_capital"""
+        self.rte._live_mode = "micro_live_real_capital"
+        r = self.rte.run_reality_mirror_cycle()
+        # capital_exposure is derived from live_mode in result dict
+        self.assertEqual(r["capital_exposure"], 0.01)
 
-    def test_kill_switch_overrides_all_tiers(self):
-        """kill_switch 应覆盖所有 tier"""
-        self.rte._tier = 4
-        self.rte.trigger_kill_switch(5.0)
-        r = self.rte.execute_live_order({"symbol": "NVDA", "qty": 100, "price": 800})
-        self.assertFalse(r["executed"])
-        self.assertIn("kill_switch", r["reason"])
+    def test_live_protection_fallback(self):
+        """保护引擎应在高偏差时 fallback"""
+        r = self.rte.live_protection_engine(dict(drawdown=0.03, divergence=30, slippage=0.005, regime="trend"))
+        self.assertEqual(r["action"], "fallback_to_shadow")
 
-    def test_shadow_live_consistency_gate(self):
-        """shadow-live 一致性门应正确判断"""
-        d = dict(execution_divergence_score=95, pnl_divergence=1.0, slippage_divergence=5.0,
-                 stability_score=0.9, regime="trend", kill_switch=False,
-                 consecutive_loss_days=0, total_pnl=0)
-        r = self.rte.compute_capital_tier(d)
-        self.assertEqual(r["tier_name"], "micro_live")
+    def test_live_protection_all_clear(self):
+        """正常状态不应触发保护"""
+        r = self.rte.live_protection_engine(dict(drawdown=0.01, divergence=10, slippage=0.0005, regime="trend"))
+        self.assertEqual(r["action"], "none")
 
-    def test_capital_smoothing_behavior(self):
-        """资金平滑应防止跳跃"""
-        self.rte._smooth_allocation = 0.0
-        ccds = dict(allowed_pct=0.05)
-        r = self.rte._apply_capital_smoothing(ccds, alpha=0.7)
-        self.assertAlmostEqual(r["allowed_pct"], 0.7 * 0.0 + 0.3 * 0.05, places=4)
+    def test_broker_adapter_live_execution(self):
+        """LiveBrokerAdapter 应支持实盘方法"""
+        ba = LiveBrokerAdapter()
+        o = ba.submit_live_order("NVDA", 100, 800.0)
+        self.assertEqual(o["order_id"], 1)
+        filled = ba.confirm_fill(1)
+        self.assertEqual(filled["status"], "filled")
+        pnl = ba.fetch_real_pnl()
+        self.assertIn("realized_pnl", pnl)
+        self.assertIn("unrealized_pnl", pnl)
 
-    def test_liquidity_stress_blocks_live(self):
-        """liquidity_stress 应阻止 live（通过 v11 gate）"""
-        d = dict(execution_divergence_score=90, pnl_divergence=2, slippage_divergence=10)
-        r = self.rte._live_risk_gate(d, dict(regime_type="liquidity_stress"))
-        self.assertFalse(r["live_allowed"])
+    def test_live_loss_triggers_shutdown(self):
+        """大亏损应触发 shutdown"""
+        self.rte._total_pnl = -60
+        self.rte._divergence_history = [95]
+        r = self.rte.run_reality_mirror_cycle()
+        self.assertEqual(r["live_mode"], "shadow_only")
+
+    def test_set_live_mode(self):
+        self.rte.set_live_mode("micro_live_real_capital")
+        self.assertEqual(self.rte._live_mode, "micro_live_real_capital")
 
     def test_kill_switch_triggers(self):
         self.rte.trigger_kill_switch(5.0)
