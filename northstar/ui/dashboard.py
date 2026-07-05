@@ -328,5 +328,51 @@ def render_market_intelligence(st: Any) -> None:
         st.caption(f"AI市场洞察暂不可用: {exc}")
 
 
+def render_paper_trading(st: Any) -> None:
+    """渲染模拟交易结果。"""
+    try:
+        from northstar.backtest.paper_trading_engine import PaperTradingEngine
+        from northstar.ai.market_intelligence import build_market_summary
+        from northstar.ai.stock_selector import generate_stock_signals
+
+        price_data = {
+            "SPY": [500.0, 502.0, 501.0, 505.0, 508.0],
+            "QQQ": [400.0, 403.0, 402.0, 406.0, 410.0],
+            "NVDA": [800.0, 810.0, 805.0, 820.0, 830.0],
+            "MSFT": [300.0, 302.0, 301.0, 305.0, 308.0],
+            "META": [200.0, 202.0, 201.0, 205.0, 208.0],
+            "AMD": [150.0, 152.0, 151.0, 155.0, 158.0],
+            "TSM": [100.0, 102.0, 101.0, 105.0, 108.0],
+            "AVGO": [500.0, 505.0, 502.0, 510.0, 515.0],
+            "PLTR": [50.0, 51.0, 50.5, 52.0, 53.0],
+            "CRM": [200.0, 202.0, 201.0, 205.0, 208.0],
+            "XLE": [80.0, 81.0, 80.5, 82.0, 83.0],
+        }
+
+        with st.expander("💰 模拟交易结果", expanded=False):
+            market = build_market_summary(price_data)
+            watchlist = ["NVDA", "MSFT", "META", "AMD", "TSM", "PLTR", "CRM", "XLE"]
+            signals = generate_stock_signals(market, watchlist, price_data)
+
+            engine = PaperTradingEngine(initial_capital=100000.0)
+            engine.execute_signals(signals, price_data)
+            report = engine.get_report()
+
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("总收益率", f'{report["total_return_pct"]:+.2f}%')
+            c2.metric("胜率", f'{report["win_rate"]:.0%}')
+            c3.metric("最大回撤", f'{report["max_drawdown_pct"]:.2f}%')
+            c4.metric("当前持仓", report["open_positions"])
+
+            st.markdown("**最近5笔交易**")
+            for t in report.get("closed_trades", [])[:5]:
+                icon = "🟢" if t["pnl_pct"] > 0 else "🔴"
+                st.markdown(f"- {t['symbol']}: {icon} {t['pnl_pct']:+.2f}% (持仓{t.get('days_held', '?')}天)")
+
+            st.caption("模拟交易仅基于历史价格数据回测，不构成投资建议")
+    except Exception as exc:
+        st.caption(f"模拟交易暂不可用: {exc}")
+
+
 if __name__ == "__main__":
     run()
