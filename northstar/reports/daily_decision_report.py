@@ -86,6 +86,7 @@ class StockPriceInfo:
     suggestion: str = "暂不买入"   # 操作建议
     reason: str = ""           # 一句话理由
     score: float = 0.0         # 综合评分（用于排序）
+    data_source: str = "unavailable"  # yfinance / yahoo_quote / unavailable
 
 
 # ── 日志 ───────────────────────────────────────────────────────
@@ -166,45 +167,44 @@ def load_portfolio() -> dict[str, dict[str, Any]]:
 def fetch_prices(
     symbols: list[str],
 ) -> dict[str, StockPriceInfo]:
-    """通过 YFinancePriceProvider 获取 25 支股票行情。
+    """通过多级数据源链获取 25 支股票行情。
 
-    降级策略：
-    1. 先用 get_quote 获取当前价和前收盘
-    2. 再用 history 获取近 20 日数据
-    3. 如果 yfinance 不可用或某支股票失败，跳过不影响其他股票
-    4. 每个请求设置 10 秒超时，避免国内网络环境长时间挂起
+    数据源优先级（逐只降级）：
+    1. YFinancePriceProvider (yfinance) — get_quote + history
+    2. YahooQuoteProvider (直接 HTTP 请求 Yahoo Finance API) — 备用源
+    3. 空值占位 — 报告明确提示行情不可用
+
+    代理注入：
+    - 在第一次网络请求前注入代理环境变量 HTTP_PROXY / HTTPS_PROXY
+    - YahooQuoteProvider 使用相同的代理 session
     """
-    from price_provider import YFinancePriceProvider, PriceNotFoundError
     import concurrent.futures
-    import functools
 
-    # ── 代理感知 ─────────────────────────────────────────────
+    # ── Step 0: 前置注入代理环境变量 ──────────────────────────
     from northstar.config.network import (
-        get_working_proxy,
-        get_price_provider_session,
+        apply_proxy_environment,
         get_connectivity_status,
+        get_working_proxy,
     )
+    proxy = apply_proxy_environment()
     _connectivity = get_connectivity_status()
     _proxy = _connectivity.get("proxy_url", "直连")
 
-    # 如果找到代理，配置 yfinance 使用代理 session
-    _session = get_price_provider_session()
-    if _session is not None:
-        try:
-            # 通过设置环境变量让 yfinance 使用代理
-            pass  # yfinance 会读取 requests 的 session 配置
-        except Exception:
-            pass
+    # 导入数据源
+    from price_provider import YFinancePriceProvider, PriceNotFoundError
+    from northstar.data.yahoo_quote_provider import fetch_quotes as yahoo_fetch_quotes
 
     provider = YFinancePriceProvider()
     info_map: dict[str, StockPriceInfo] = {}
     _priced_count = 0
+    _yfinance_failed: list[str] = []
 
-    def _fetch_single(symbol: str) -> StockPriceInfo:
-        """获取单支股票的行情和决策信息。"""
+    def _fetch_single_yf(symbol: str) -> StockPriceInfo | None:
+        """尝试从 yfinance 获取单支股票。成功返回 StockPriceInfo，失败返回 None。"""
         info = StockPriceInfo(symbol=symbol, company_cn=COMPANY_NAMES.get(symbol, symbol))
+        info.data_source = "yfinance"
 
-        # Step 1: 获取当前价和今日涨跌幅
+        # Step A: get_quote
         try:
             quote = provider.get_quote(symbol)
             price = float(quote.price)
@@ -215,17 +215,17 @@ def fetch_prices(
             else:
                 info.change_pct_today = 0.0
         except (PriceNotFoundError, Exception) as exc:
-            logger.warning("获取 %s 行情失败: %s", symbol, exc)
+            logger.warning("yfinance 获取 %s 失败: %s", symbol, exc)
             info.current_price = 0.0
             info.change_pct_today = 0.0
 
-        # Step 2: 获取近 20 日历史数据
+        # Step B: history
         try:
             ticker_factory = provider._get_ticker_factory()
             ticker = ticker_factory(symbol)
-            history = ticker.history(period="1mo", interval="1d")
-            if history is not None and not history.empty:
-                closes = history["Close"].dropna()
+            hist = ticker.history(period="1mo", interval="1d")
+            if hist is not None and not hist.empty:
+                closes = hist["Close"].dropna()
                 if len(closes) >= 2:
                     latest = float(closes.iloc[-1])
                     if latest > 0 and info.current_price == 0.0:
@@ -236,45 +236,77 @@ def fetch_prices(
                     old_20 = float(closes.iloc[0])
                     info.change_pct_20d = round((latest - old_20) / old_20 * 100, 2)
         except Exception as exc:
-            logger.debug("获取 %s 历史数据失败: %s", symbol, exc)
+            logger.debug("yfinance 获取 %s 历史数据失败: %s", symbol, exc)
 
-        # Step 3-7: 决策计算
-        info.trend = _judge_trend(info)
-        info.risk_level = _judge_risk(info)
-        info.suggestion = _judge_suggestion(info)
-        info.reason = _generate_reason(info)
-        info.score = _compute_score(info)
-        return info
+        if info.current_price > 0:
+            info.trend = _judge_trend(info)
+            info.risk_level = _judge_risk(info)
+            info.suggestion = _judge_suggestion(info)
+            info.reason = _generate_reason(info)
+            info.score = _compute_score(info)
+            return info
+        return None
 
-    # 使用线程池并行获取，单支股票超时 12 秒
+    # ── 第一轮: 并行 yfinance ─────────────────────────────────
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_map = {executor.submit(_fetch_single, sym): sym for sym in symbols}
-        for future in concurrent.futures.as_completed(future_map, timeout=120):
+        future_map = {executor.submit(_fetch_single_yf, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(future_map, timeout=150):
             sym = future_map[future]
             try:
-                info_map[sym] = future.result(timeout=12)
-                if info_map[sym].current_price > 0:
+                info = future.result(timeout=14)
+                if info is not None and info.current_price > 0:
+                    info_map[sym] = info
                     _priced_count += 1
+                else:
+                    _yfinance_failed.append(sym)
             except concurrent.futures.TimeoutError:
-                logger.warning("获取 %s 行情超时", sym)
-                info = StockPriceInfo(symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym))
-                info.trend = _judge_trend(info)
-                info.risk_level = _judge_risk(info)
-                info.suggestion = _judge_suggestion(info)
-                info.reason = _generate_reason(info)
-                info.score = _compute_score(info)
-                info_map[sym] = info
+                logger.warning("yfinance 获取 %s 超时", sym)
+                _yfinance_failed.append(sym)
             except Exception as exc:
-                logger.warning("获取 %s 行情异常: %s", sym, exc)
-                info = StockPriceInfo(symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym))
+                logger.warning("yfinance 获取 %s 异常: %s", sym, exc)
+                _yfinance_failed.append(sym)
+
+    # ── 第二轮: Yahoo Quote 备用源降级 ────────────────────────
+    if _yfinance_failed:
+        logger.info("yfinance 失败 %d 支，尝试 YahooQuoteProvider 降级", len(_yfinance_failed))
+        yahoo_results = yahoo_fetch_quotes(_yfinance_failed)
+        for sym in _yfinance_failed:
+            yr = yahoo_results.get(sym, {})
+            price = yr.get("price")
+            change_pct = yr.get("change_pct")
+            err = yr.get("error")
+
+            if price is not None and price > 0:
+                info = StockPriceInfo(
+                    symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym),
+                    current_price=float(price),
+                    change_pct_today=float(change_pct) if change_pct is not None else 0.0,
+                    data_source="yahoo_quote",
+                )
                 info.trend = _judge_trend(info)
                 info.risk_level = _judge_risk(info)
                 info.suggestion = _judge_suggestion(info)
                 info.reason = _generate_reason(info)
                 info.score = _compute_score(info)
                 info_map[sym] = info
+                _priced_count += 1
+                logger.info("YahooQuoteProvider 成功获取 %s: $%.2f", sym, float(price))
+            else:
+                logger.warning("YahooQuoteProvider 也失败 %s: %s", sym, err or "未知错误")
 
-    # 保存行情源状态供 report 使用
+    # ── 第三轮: 仍然失败的创建空值占位 ────────────────────────
+    for sym in symbols:
+        if sym not in info_map:
+            info = StockPriceInfo(symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym))
+            info.data_source = "unavailable"
+            info.trend = _judge_trend(info)
+            info.risk_level = _judge_risk(info)
+            info.suggestion = _judge_suggestion(info)
+            info.reason = _generate_reason(info)
+            info.score = _compute_score(info)
+            info_map[sym] = info
+
+    # ── 计算行情源状态 ────────────────────────────────────────
     _pct_priced = _priced_count / max(len(symbols), 1)
     if _pct_priced >= 0.8:
         info_map["__market_status__"] = "正常"

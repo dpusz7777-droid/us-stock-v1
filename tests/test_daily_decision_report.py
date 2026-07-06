@@ -146,10 +146,7 @@ def test_report_file_naming_convention() -> None:
 def test_fetch_prices_partial_failure() -> None:
     """部分股票获取失败时不应导致整个函数崩溃。"""
     import pandas as pd
-    from datetime import datetime, timezone
-    import numpy as np
 
-    # 构造真实的历史 DataFrame
     dates = pd.date_range("2026-06-30", periods=5, freq="D")
     real_df = pd.DataFrame({
         "Close": [95.0, 96.0, 97.0, 98.0, 100.0],
@@ -158,11 +155,9 @@ def test_fetch_prices_partial_failure() -> None:
         "Low": [93.0, 94.0, 95.0, 96.0, 98.0],
     }, index=dates)
 
-    # 使用 real_df 的 mock: 对成功调用的股票返回 real_df
     def mock_history(period="1mo", interval="1d"):
         return real_df
 
-    # Mock ticker: 给每个股票一个独立的 MagicMock
     created_tickers: dict[str, MagicMock] = {}
 
     def make_ticker(symbol: str) -> MagicMock:
@@ -172,7 +167,7 @@ def test_fetch_prices_partial_failure() -> None:
             created_tickers[symbol] = t
         return created_tickers[symbol]
 
-    # Mock YFinancePriceProvider
+    # Mock YFinancePriceProvider at the import source
     with patch("price_provider.YFinancePriceProvider") as mock_provider_cls:
         instance = mock_provider_cls.return_value
 
@@ -191,13 +186,15 @@ def test_fetch_prices_partial_failure() -> None:
         symbols = ["NVDA", "MSFT", "AAPL", "IONQ", "RGTI", "COIN"]
         info_map = fetch_prices(symbols)
 
-        assert len(info_map) == 6  # 所有股票都有条目
+        # 6 支股票 + 3 个元数据键(__market_status__, __priced_count__, __proxy_url__)
+        stock_count = sum(1 for k in info_map if not k.startswith("__"))
+        assert stock_count == 6, f"期望 6 支股票，实际 {stock_count}"
         # 成功获取的股票应有正常价格
         assert info_map["NVDA"].current_price > 0
-        assert info_map["NVDA"].change_pct_today != 0.0  # 今日涨跌幅非零
+        assert info_map["NVDA"].change_pct_today != 0.0
         # 失败的股票从历史数据降级获取价格，不会有今日涨跌（prev_close 缺失）
-        assert info_map["IONQ"].current_price > 0  # 从历史数据降级获得价格
-        assert info_map["IONQ"].change_pct_today == 0.0  # 今日涨跌幅为 0（无 prev_close）
+        assert info_map["IONQ"].current_price > 0
+        assert info_map["IONQ"].change_pct_today == 0.0
         assert info_map["RGTI"].current_price > 0
         assert info_map["COIN"].current_price > 0
 
@@ -356,7 +353,6 @@ def test_make_overall_conclusion() -> None:
     """今日一句话结论逻辑测试。"""
     # 强势股多 → 适合买入
     strong_map = {f"S{i}": StockPriceInfo(symbol=f"S{i}", trend="强势", risk_level="低") for i in range(15)}
-    # 补充中性股
     for i in range(10):
         strong_map[f"N{i}"] = StockPriceInfo(symbol=f"N{i}", trend="中性", risk_level="低")
     conclusion = _make_overall_conclusion(strong_map)
@@ -392,7 +388,6 @@ def _make_test_info_map() -> dict[str, StockPriceInfo]:
 
     info_map: dict[str, StockPriceInfo] = {}
     for i, sym in enumerate(symbols):
-        # 制造一些差异以便 Top 5 排序
         base_trend = "强势" if i < 8 else ("弱势" if i > 20 else "中性")
         base_risk = "低" if i < 5 else ("高" if i > 22 else "中")
         info = StockPriceInfo(

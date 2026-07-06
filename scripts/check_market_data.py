@@ -48,17 +48,15 @@ def _print_separator(title: str) -> None:
     _safe_print("=" * 60)
 
 
-def _test_yfinance_direct() -> dict[str, Any]:
-    """测试直接通过 yfinance 获取行情。"""
+def _test_yfinance_via_fetch_prices() -> dict[str, Any]:
+    """测试通过 fetch_prices (yfinance + yahoo_quote 链) 获取行情。"""
     from northstar.reports.daily_decision_report import fetch_prices
-    from northstar.reports.daily_decision_report import load_watchlist
 
     results: dict[str, Any] = {}
-    results["test_name"] = "YFinance 直连测试"
+    results["test_name"] = "YFinance + 备用源 综合测试"
     results["symbols_tested"] = TEST_SYMBOLS
     stock_results = []
 
-    # 使用 fetch_prices 测试
     try:
         info_map = fetch_prices(TEST_SYMBOLS)
         for sym in TEST_SYMBOLS:
@@ -69,30 +67,62 @@ def _test_yfinance_direct() -> dict[str, Any]:
                     "success": info.current_price > 0,
                     "current_price": info.current_price,
                     "change_pct_today": info.change_pct_today,
-                    "reason": "成功" if info.current_price > 0 else "价格为空（行情源不可用）",
+                    "data_source": info.data_source,
+                    "reason": "成功" if info.current_price > 0 else "价格为空",
                 })
             else:
                 stock_results.append({
-                    "symbol": sym,
-                    "success": False,
-                    "current_price": 0.0,
-                    "change_pct_today": 0.0,
-                    "reason": "获取失败（无返回结果）",
+                    "symbol": sym, "success": False, "current_price": 0.0,
+                    "change_pct_today": 0.0, "data_source": "unavailable",
+                    "reason": "获取失败",
                 })
     except Exception as exc:
-        # fetch_prices 内已有降级，不会抛出
         for sym in TEST_SYMBOLS:
             stock_results.append({
-                "symbol": sym,
-                "success": False,
-                "current_price": 0.0,
-                "change_pct_today": 0.0,
+                "symbol": sym, "success": False, "current_price": 0.0,
+                "change_pct_today": 0.0, "data_source": "unavailable",
                 "reason": f"异常: {exc}",
             })
 
     results["stock_results"] = stock_results
-    success_count = sum(1 for r in stock_results if r["success"])
-    results["success_count"] = success_count
+    results["success_count"] = sum(1 for r in stock_results if r["success"])
+    results["total_count"] = len(TEST_SYMBOLS)
+    return results
+
+
+def _test_yahoo_quote_provider() -> dict[str, Any]:
+    """测试 YahooQuoteProvider 备用行情源。"""
+    from northstar.data.yahoo_quote_provider import fetch_quotes
+
+    results: dict[str, Any] = {}
+    results["test_name"] = "Yahoo Quote 备用源测试"
+    results["symbols_tested"] = TEST_SYMBOLS
+    stock_results = []
+
+    try:
+        quotes = fetch_quotes(TEST_SYMBOLS)
+        for sym in TEST_SYMBOLS:
+            q = quotes.get(sym, {})
+            price = q.get("price")
+            err = q.get("error")
+            stock_results.append({
+                "symbol": sym,
+                "success": price is not None and price > 0,
+                "current_price": float(price) if price is not None else 0.0,
+                "change_pct_today": float(q.get("change_pct") or 0.0) if q.get("change_pct") is not None else 0.0,
+                "data_source": "yahoo_quote",
+                "reason": "成功" if (price is not None and price > 0) else str(err or "失败"),
+            })
+    except Exception as exc:
+        for sym in TEST_SYMBOLS:
+            stock_results.append({
+                "symbol": sym, "success": False, "current_price": 0.0,
+                "change_pct_today": 0.0, "data_source": "yahoo_quote",
+                "reason": f"异常: {exc}",
+            })
+
+    results["stock_results"] = stock_results
+    results["success_count"] = sum(1 for r in stock_results if r["success"])
     results["total_count"] = len(TEST_SYMBOLS)
     return results
 
@@ -100,10 +130,7 @@ def _test_yfinance_direct() -> dict[str, Any]:
 def _test_proxy_connectivity() -> dict[str, Any]:
     """测试代理连通性。"""
     from northstar.config.network import (
-        load_config,
-        get_working_proxy,
-        get_connectivity_status,
-        reset_proxy_cache,
+        load_config, get_working_proxy, get_connectivity_status, reset_proxy_cache,
     )
 
     reset_proxy_cache()
@@ -118,7 +145,6 @@ def _test_proxy_connectivity() -> dict[str, Any]:
     results["working_proxy"] = status.get("proxy_url", "直连")
     results["proxy_found"] = status.get("proxy_working", False)
 
-    # 记录每个候选代理的测试结果
     candidates = cfg.get("candidate_proxies", [])
     candidate_results = []
     for proxy in candidates:
@@ -127,12 +153,12 @@ def _test_proxy_connectivity() -> dict[str, Any]:
         ok = _test_proxy(proxy, timeout)
         candidate_results.append({"proxy": proxy, "available": ok})
     results["candidate_results"] = candidate_results
-
     return results
 
 
 def _save_diagnosis_log(
     yfinance_result: dict[str, Any],
+    yahoo_result: dict[str, Any],
     proxy_result: dict[str, Any],
 ) -> None:
     """保存诊断日志到 logs/market_data_check.log。"""
@@ -147,12 +173,23 @@ def _save_diagnosis_log(
         f.write(f"诊断时间: {now}\n")
         f.write(f"{'='*60}\n")
 
-        f.write(f"\n【YFinance 直连测试】\n")
+        f.write(f"\n【YFinance 综合测试】\n")
         for sr in yfinance_result["stock_results"]:
-            status = "✅ 成功" if sr["success"] else "❌ 失败"
+            status = "✅" if sr["success"] else "❌"
             f.write(f"  {sr['symbol']}: {status}")
             if sr["current_price"]:
-                f.write(f" 价格={sr['current_price']}")
+                f.write(f" 价格={sr['current_price']:.2f}")
+            f.write(f" 源={sr.get('data_source','?')}")
+            if sr.get("reason"):
+                f.write(f" 原因={sr['reason']}")
+            f.write("\n")
+
+        f.write(f"\n【Yahoo Quote 备用源测试】\n")
+        for sr in yahoo_result["stock_results"]:
+            status = "✅" if sr["success"] else "❌"
+            f.write(f"  {sr['symbol']}: {status}")
+            if sr["current_price"]:
+                f.write(f" 价格={sr['current_price']:.2f}")
             if sr.get("reason"):
                 f.write(f" 原因={sr['reason']}")
             f.write("\n")
@@ -164,15 +201,16 @@ def _save_diagnosis_log(
             status = "✅" if cr["available"] else "❌"
             f.write(f"  {cr['proxy']}: {status}\n")
 
-        f.write(f"\n【结论】\n")
-        sy = yfinance_result["success_count"]
-        st = yfinance_result["total_count"]
-        if sy == st:
-            f.write("  行情源正常\n")
-        elif sy >= st * 0.3:
-            f.write("  行情源部分可用\n")
+        ys = yfinance_result["success_count"]
+        yh = yahoo_result["success_count"]
+        best = max(ys, yh)
+        total = yfinance_result["total_count"]
+        if best >= total * 0.8:
+            f.write("  结论: 行情源正常\n")
+        elif best >= total * 0.3:
+            f.write("  结论: 行情源部分可用\n")
         else:
-            f.write("  行情源不可用\n")
+            f.write("  结论: 行情源不可用\n")
         f.write(f"  {'='*60}\n\n")
 
 
@@ -188,37 +226,57 @@ def main() -> int:
     _safe_print("    行情数据连通性诊断工具")
     _safe_print("")
 
-    _print_separator("第一步: 代理连通性检测")
+    # ── Step 1: 代理 ──
+    _print_separator("【代理检测】")
     start = time.time()
     proxy_result = _test_proxy_connectivity()
     elapsed = time.time() - start
 
     if proxy_result["proxy_found"]:
-        _safe_print(f"  可用代理: {proxy_result['working_proxy']}")
+        _safe_print(f"  当前使用代理: {proxy_result['working_proxy']}")
     else:
-        _safe_print("  未检测到可用代理，将使用直连")
+        _safe_print("  当前使用代理: 直连")
     _safe_print(f"  耗时: {elapsed:.1f}s")
 
-    _print_separator("第二步: YFinance 行情测试")
+    # ── Step 2: YFinance 综合测试 ──
+    _print_separator("【YFinance 综合测试】")
     _safe_print(f"  测试股票: {', '.join(TEST_SYMBOLS)}")
     start = time.time()
-    yfinance_result = _test_yfinance_direct()
+    yf_result = _test_yfinance_via_fetch_prices()
     elapsed = time.time() - start
 
-    for sr in yfinance_result["stock_results"]:
+    for sr in yf_result["stock_results"]:
+        icon = "✅" if sr["success"] else "❌"
+        price_str = f"${sr['current_price']:.2f}" if sr["current_price"] else "—"
+        change_str = f"{sr['change_pct_today']:+.1f}%" if sr["current_price"] else "—"
+        src = sr.get("data_source", "?")
+        _safe_print(f"  {icon} {sr['symbol']}: 价格={price_str} 涨跌={change_str} 源={src}")
+    _safe_print(f"  耗时: {elapsed:.1f}s")
+
+    # ── Step 3: Yahoo Quote 备用源 ──
+    _print_separator("【Yahoo Quote 备用源测试】")
+    start = time.time()
+    yq_result = _test_yahoo_quote_provider()
+    elapsed = time.time() - start
+
+    for sr in yq_result["stock_results"]:
         icon = "✅" if sr["success"] else "❌"
         price_str = f"${sr['current_price']:.2f}" if sr["current_price"] else "—"
         change_str = f"{sr['change_pct_today']:+.1f}%" if sr["current_price"] else "—"
         _safe_print(f"  {icon} {sr['symbol']}: 价格={price_str} 涨跌={change_str}")
     _safe_print(f"  耗时: {elapsed:.1f}s")
 
-    _print_separator("第三步: 诊断结论")
-    sy = yfinance_result["success_count"]
-    st = yfinance_result["total_count"]
-    if sy == st:
+    # ── Step 4: 最终结论 ──
+    _print_separator("【最终结论】")
+    ys = yf_result["success_count"]
+    yq = yq_result["success_count"]
+    best = max(ys, yq)
+    total = yf_result["total_count"]
+
+    if best == total:
         conclusion = "行情源正常"
         icon = "✅"
-    elif sy >= st * 0.3:
+    elif best >= total * 0.3:
         conclusion = "行情源部分可用"
         icon = "⚠️"
     else:
@@ -226,23 +284,23 @@ def main() -> int:
         icon = "🔴"
 
     _safe_print(f"  {icon} {conclusion}")
-    _safe_print(f"  成功获取: {sy}/{st}")
-    _safe_print(f"  当前代理: {proxy_result['working_proxy']}")
-    if sy < st:
+    _safe_print(f"  YFinance 综合成功: {ys}/{total}")
+    _safe_print(f"  Yahoo Quote 成功: {yq}/{total}")
+    _safe_print(f"  当前使用代理: {proxy_result['working_proxy']}")
+
+    if best < total:
         _safe_print("")
         _safe_print("  💡 建议:")
         _safe_print("    - 检查 northstar/config/network_config.json 中的代理配置")
         _safe_print("    - 如果开启了 VPN/代理，确保端口与配置文件匹配")
-        _safe_print("    - 如果没有代理，可暂时跳过行情数据，报告仍能生成")
-        _safe_print("    - 如需修改代理，编辑 network_config.json 后重新运行诊断")
+        _safe_print("    - 编辑 network_config.json 后重新运行诊断")
 
-    # 保存日志
-    _save_diagnosis_log(yfinance_result, proxy_result)
+    _save_diagnosis_log(yf_result, yq_result, proxy_result)
     _safe_print("")
     _safe_print("  诊断日志已保存: logs/market_data_check.log")
     _safe_print("")
 
-    return 0 if sy > 0 else 1
+    return 0 if best > 0 else 1
 
 
 if __name__ == "__main__":

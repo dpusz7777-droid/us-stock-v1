@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -209,6 +210,49 @@ def get_price_provider_session() -> Any | None:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
     })
     return session
+
+
+# ── 代理注入 ──────────────────────────────────────────────────
+_proxy_env_applied: bool = False
+
+
+def apply_proxy_environment() -> str | None:
+    """在进程层设置 HTTP_PROXY / HTTPS_PROXY 环境变量。
+
+    这必须在 yfinance 或任何网络请求库被 import 之前调用。
+    如果之前已经调用过，不会重复设置。
+
+    Returns:
+        代理地址，或 None（直连）
+    """
+    global _proxy_env_applied
+    if _proxy_env_applied:
+        return os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+
+    proxy = get_working_proxy()
+    if proxy:
+        os.environ["HTTP_PROXY"] = proxy
+        os.environ["HTTPS_PROXY"] = proxy
+        os.environ["ALL_PROXY"] = proxy
+        # 小写版本（某些库读取这个）
+        os.environ["http_proxy"] = proxy
+        os.environ["https_proxy"] = proxy
+        os.environ["all_proxy"] = proxy
+        logger.info("代理环境变量已设置: %s", proxy)
+        _proxy_env_applied = True
+        return proxy
+
+    logger.info("无代理可用，清除代理环境变量")
+    for key in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        os.environ.pop(key, None)
+    _proxy_env_applied = True
+    return None
+
+
+def reset_proxy_env() -> None:
+    """重置代理环境变量缓存，下次调用 apply_proxy_environment 会重新设置。"""
+    global _proxy_env_applied
+    _proxy_env_applied = False
 
 
 # ── 诊断信息 ──────────────────────────────────────────────────

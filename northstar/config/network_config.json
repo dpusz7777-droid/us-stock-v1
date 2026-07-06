@@ -1,6 +1,6 @@
 {
-  "use_proxy": false,
-  "proxy_url": "",
+  "use_proxy": true,
+  "proxy_url": "http://127.0.0.1:7897",
   "auto_try_local_proxy": true,
   "candidate_proxies": [
     "http://127.0.0.1:7890",

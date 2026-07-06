@@ -54,14 +54,17 @@ def test_load_config_returns_dict() -> None:
     assert isinstance(cfg["candidate_proxies"], list)
 
 
-def test_load_config_has_expected_defaults() -> None:
-    """配置文件应包含预期的默认字段。"""
+def test_load_config_has_expected_fields() -> None:
+    """配置文件应包含必要的字段（当前配置为 use_proxy=true 因为办公室网络需要代理）。"""
     reset_proxy_cache()
     cfg = load_config()
-    assert cfg["use_proxy"] is False
-    assert cfg["proxy_url"] == ""
+    assert "use_proxy" in cfg
+    assert "proxy_url" in cfg
     assert cfg["auto_try_local_proxy"] is True
     assert cfg["timeout_seconds"] == 12
+    # 当 use_proxy=true 时，proxy_url 应非空
+    if cfg.get("use_proxy"):
+        assert cfg.get("proxy_url"), "use_proxy=true 时 proxy_url 不应为空"
 
 
 # ═══════════════════════════════════════════════════════════════
