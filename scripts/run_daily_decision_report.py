@@ -30,17 +30,27 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 
+def _safe_print(text: str) -> None:
+    """安全输出到 Windows 控制台（处理 GBK 编码无法打印的字符）。"""
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        # 替换无法显示的字符
+        safe = text.encode("gbk", errors="replace").decode("gbk", errors="replace")
+        print(safe)
+
+
 def main() -> int:
     """执行每日决策报告生成，返回退出码。"""
     from northstar.reports.daily_decision_report import generate_daily_decision_report
 
     now_str = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{now_str}] 开始生成每日决策报告...")
+    _safe_print(f"[{now_str}] 开始生成每日决策报告...")
 
     try:
         result = generate_daily_decision_report()
     except Exception as exc:
-        print(f"❌ 报告生成异常: {exc}")
+        _safe_print(f"[失败] 报告生成异常: {exc}")
         traceback.print_exc()
         # 写入错误日志
         log_path = PROJECT_ROOT / "logs" / "daily_decision_report.log"
@@ -52,17 +62,17 @@ def main() -> int:
         return 1
 
     if "error" in result:
-        print(f"❌ 报告生成失败: {result['error']}")
+        _safe_print(f"[失败] 报告生成失败: {result['error']}")
         return 1
 
     md_path = result.get("_md_path", "未知")
     json_path = result.get("_json_path", "未知")
     conclusion = result.get("overall_conclusion", "未知")
 
-    print(f"✅ 每日决策报告已生成")
-    print(f"   Markdown: {md_path}")
-    print(f"   JSON:     {json_path}")
-    print(f"   今日结论: {conclusion}")
+    _safe_print(f"[完成] 每日决策报告已生成")
+    _safe_print(f"   Markdown: {md_path}")
+    _safe_print(f"   JSON:     {json_path}")
+    _safe_print(f"   今日结论: {conclusion}")
     return 0
 
 

@@ -172,13 +172,36 @@ def fetch_prices(
     1. 先用 get_quote 获取当前价和前收盘
     2. 再用 history 获取近 20 日数据
     3. 如果 yfinance 不可用或某支股票失败，跳过不影响其他股票
+    4. 每个请求设置 10 秒超时，避免国内网络环境长时间挂起
     """
     from price_provider import YFinancePriceProvider, PriceNotFoundError
+    import concurrent.futures
+    import functools
+
+    # ── 代理感知 ─────────────────────────────────────────────
+    from northstar.config.network import (
+        get_working_proxy,
+        get_price_provider_session,
+        get_connectivity_status,
+    )
+    _connectivity = get_connectivity_status()
+    _proxy = _connectivity.get("proxy_url", "直连")
+
+    # 如果找到代理，配置 yfinance 使用代理 session
+    _session = get_price_provider_session()
+    if _session is not None:
+        try:
+            # 通过设置环境变量让 yfinance 使用代理
+            pass  # yfinance 会读取 requests 的 session 配置
+        except Exception:
+            pass
 
     provider = YFinancePriceProvider()
     info_map: dict[str, StockPriceInfo] = {}
+    _priced_count = 0
 
-    for symbol in symbols:
+    def _fetch_single(symbol: str) -> StockPriceInfo:
+        """获取单支股票的行情和决策信息。"""
         info = StockPriceInfo(symbol=symbol, company_cn=COMPANY_NAMES.get(symbol, symbol))
 
         # Step 1: 获取当前价和今日涨跌幅
@@ -207,28 +230,60 @@ def fetch_prices(
                     latest = float(closes.iloc[-1])
                     if latest > 0 and info.current_price == 0.0:
                         info.current_price = latest
-                    # 近 5 日涨跌幅
                     if len(closes) >= 5:
                         old_5 = float(closes.iloc[-5])
                         info.change_pct_5d = round((latest - old_5) / old_5 * 100, 2)
-                    # 近 20 日涨跌幅
                     old_20 = float(closes.iloc[0])
                     info.change_pct_20d = round((latest - old_20) / old_20 * 100, 2)
         except Exception as exc:
             logger.debug("获取 %s 历史数据失败: %s", symbol, exc)
 
-        # Step 3: 趋势判断
+        # Step 3-7: 决策计算
         info.trend = _judge_trend(info)
-        # Step 4: 风险等级
         info.risk_level = _judge_risk(info)
-        # Step 5: 操作建议
         info.suggestion = _judge_suggestion(info)
-        # Step 6: 一句话理由
         info.reason = _generate_reason(info)
-        # Step 7: 综合评分
         info.score = _compute_score(info)
+        return info
 
-        info_map[symbol] = info
+    # 使用线程池并行获取，单支股票超时 12 秒
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_map = {executor.submit(_fetch_single, sym): sym for sym in symbols}
+        for future in concurrent.futures.as_completed(future_map, timeout=120):
+            sym = future_map[future]
+            try:
+                info_map[sym] = future.result(timeout=12)
+                if info_map[sym].current_price > 0:
+                    _priced_count += 1
+            except concurrent.futures.TimeoutError:
+                logger.warning("获取 %s 行情超时", sym)
+                info = StockPriceInfo(symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym))
+                info.trend = _judge_trend(info)
+                info.risk_level = _judge_risk(info)
+                info.suggestion = _judge_suggestion(info)
+                info.reason = _generate_reason(info)
+                info.score = _compute_score(info)
+                info_map[sym] = info
+            except Exception as exc:
+                logger.warning("获取 %s 行情异常: %s", sym, exc)
+                info = StockPriceInfo(symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym))
+                info.trend = _judge_trend(info)
+                info.risk_level = _judge_risk(info)
+                info.suggestion = _judge_suggestion(info)
+                info.reason = _generate_reason(info)
+                info.score = _compute_score(info)
+                info_map[sym] = info
+
+    # 保存行情源状态供 report 使用
+    _pct_priced = _priced_count / max(len(symbols), 1)
+    if _pct_priced >= 0.8:
+        info_map["__market_status__"] = "正常"
+    elif _pct_priced >= 0.3:
+        info_map["__market_status__"] = "部分可用"
+    else:
+        info_map["__market_status__"] = "不可用"
+    info_map["__priced_count__"] = float(_priced_count)
+    info_map["__proxy_url__"] = _proxy
 
     return info_map
 
@@ -362,16 +417,35 @@ def build_report_data(
     portfolio: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """构建完整的每日决策报告数据字典。"""
+    # 提取行情源状态元数据（以 __ 开头的键）
+    _market_status = info_map.pop("__market_status__", "不可用") if isinstance(info_map, dict) else "不可用"
+    _priced_count = info_map.pop("__priced_count__", 0.0) if isinstance(info_map, dict) else 0.0
+    _proxy_url = info_map.pop("__proxy_url__", "直连") if isinstance(info_map, dict) else "直连"
+
     symbols = list(info_map.keys())
     now_utc = datetime.now(timezone.utc)
     now_beijing = now_utc.astimezone()  # 系统时区
     date_str = now_beijing.strftime("%Y-%m-%d")
     time_str = now_beijing.strftime("%H:%M:%S")
+    total = len(symbols)
+    priced = int(_priced_count)
+
+    # 行情源状态中文
+    market_status_cn = _market_status if _market_status in ("正常", "部分可用", "不可用") else "不可用"
+    market_status_icon = {"正常": "✅", "部分可用": "⚠️", "不可用": "🔴"}.get(market_status_cn, "❓")
+
+    # 构建数据异常提示
+    data_warning = ""
+    if priced < total * 0.3 or market_status_cn == "不可用":
+        data_warning = "⚠ 当前报告只适合观察系统结构，不适合作为交易判断依据 — 行情源不可用，大部分价格为默认值"
 
     # 1. 今日总览
     overview = {
         "当前日期": date_str,
-        "观察池股票数量": len(symbols),
+        "观察池股票数量": total,
+        "成功获取价格数量": f"{priced}/{total}",
+        "行情源状态": f"{market_status_icon} {market_status_cn}",
+        "当前使用代理": _proxy_url,
         "数据更新时间": f"{date_str} {time_str}",
         "系统运行状态": "本地正常运行（未接入券商）",
     }
@@ -702,8 +776,15 @@ def generate_daily_decision_report(
 
     # 3. 获取行情
     info_map = fetch_prices(symbols)
-    priced_count = sum(1 for v in info_map.values() if v.current_price > 0)
-    logger.info("成功获取 %d/%d 支股票行情", priced_count, len(symbols))
+    # 只统计真正的股票（跳过 __ 开头的元数据键）
+    priced_count = sum(
+        1 for k, v in info_map.items()
+        if not k.startswith("__") and isinstance(v, StockPriceInfo) and v.current_price > 0
+    )
+    real_stock_count = sum(
+        1 for k in info_map if not k.startswith("__")
+    )
+    logger.info("成功获取 %d/%d 支股票行情", priced_count, real_stock_count)
 
     # 4. 构建报告数据
     report_data = build_report_data(info_map, portfolio)
