@@ -1,14 +1,9 @@
 {
   "symbols": [
-    "NVDA",
-    "PLTR",
-    "SOFI",
-    "AMD",
-    "AVGO",
-    "TSLA",
-    "META",
-    "GOOGL",
-    "MSFT",
-    "AAPL"
+    "NVDA", "AMD", "AVGO", "TSM", "ASML",
+    "MSFT", "GOOGL", "META", "AMZN", "AAPL",
+    "PLTR", "TSLA", "SOFI", "IONQ", "RGTI",
+    "ARM", "MU", "SMCI", "DELL", "ORCL",
+    "CRWD", "PANW", "SNOW", "MDB", "COIN"
   ]
 }

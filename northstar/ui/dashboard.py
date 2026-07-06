@@ -272,6 +272,71 @@ def run() -> None:
         unsafe_allow_html=True,
     )
 
+    # ── 每日决策报告 ─────────────────────────────────────────
+    _render_daily_decision_report_block(st)
+
+
+def _render_daily_decision_report_block(st: Any) -> None:
+    """渲染每日决策报告中文区域。"""
+    try:
+        from northstar.reports.daily_decision_report import generate_daily_decision_report
+
+        # 生成报告
+        result = generate_daily_decision_report()
+        if "error" in result:
+            st.caption("⚠ 每日决策报告暂不可用")
+            return
+
+        overview = result.get("overview", {})
+        top5_opp = result.get("top5_opportunity", [])
+        top5_risk = result.get("top5_risk", [])
+        conclusion = result.get("overall_conclusion", "")
+        md_path = result.get("_md_path", "")
+        portfolio_notes = result.get("portfolio_notes", [])
+
+        st.markdown(
+            f"""
+            <div class="block">
+              <div class="label">📋 每日决策报告</div>
+              <div style="font-size:14px;font-weight:600;color:#F5C76B;margin-bottom:12px">
+                最新报告日期: {overview.get("当前日期", "—")}
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+                <div style="background:#10151D;border:1px solid #202936;border-radius:13px;padding:14px">
+                  <div style="font-size:12px;color:#758195">观察池数量</div>
+                  <div style="font-size:22px;font-weight:850;margin-top:4px">{overview.get("观察池股票数量", "—")}</div>
+                </div>
+                <div style="background:#10151D;border:1px solid #202936;border-radius:13px;padding:14px">
+                  <div style="font-size:12px;color:#758195">数据更新时间</div>
+                  <div style="font-size:22px;font-weight:850;margin-top:4px">{overview.get("数据更新时间", "—").split(" ")[-1] if " " in str(overview.get("数据更新时间", "")) else overview.get("数据更新时间", "—")}</div>
+                </div>
+              </div>
+              <div style="margin-bottom:10px">
+                <div style="font-size:13px;font-weight:750;color:#8793A5;margin-bottom:6px">🟢 Top 5 机会</div>
+                <div style="font-size:13px;color:#20D69B">
+                  {" | ".join(s["symbol"] for s in top5_opp[:5]) if top5_opp else "暂无数据"}
+                </div>
+              </div>
+              <div style="margin-bottom:10px">
+                <div style="font-size:13px;font-weight:750;color:#8793A5;margin-bottom:6px">🔴 Top 5 风险</div>
+                <div style="font-size:13px;color:#FF647C">
+                  {" | ".join(s["symbol"] for s in top5_risk[:5]) if top5_risk else "暂无数据"}
+                </div>
+              </div>
+              <div style="margin-bottom:10px">
+                <div style="font-size:13px;font-weight:750;color:#8793A5;margin-bottom:6px">💡 今日一句话结论</div>
+                <div style="font-size:16px;font-weight:800;color:#F5C76B">{conclusion}</div>
+              </div>
+              <div style="font-size:12px;color:#6F7A8B;margin-top:10px">
+                报告路径: <code>{md_path}</code>
+              </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    except Exception as exc:
+        st.caption(f"每日决策报告暂不可用: {exc}")
+
 
 def render_market_intelligence(st: Any) -> None:
     """渲染每日AI市场洞察。"""
