@@ -739,7 +739,7 @@ def render_walkforward_panel(st: Any) -> None:
     """渲染Walk-Forward验证面板。"""
     try:
         from northstar.ensemble.walkforward_engine import run_walkforward_test
-        with st.expander("🧭 Walk-Forward 验证面板", expanded=False):
+        with st.expander("🧭 滚动验证面板", expanded=False):
             report = run_walkforward_test()
             windows = report.get("windows", [])
             consistency = report.get("time_consistency_score", 0)
@@ -757,9 +757,9 @@ def render_walkforward_panel(st: Any) -> None:
                 st.markdown(f"- 窗口{w['window_id']}: {icon} 训练{w.get('train_return_pct', 0):+.1f}% → 测试{w.get('test_return_pct', 0):+.1f}%")
             st.markdown(f"**市场依赖**: {report.get('regime_dependency', '?')}")
             st.markdown(f"**最佳窗口**: #{report.get('best_window', '?')} | **最差窗口**: #{report.get('worst_window', '?')}")
-            st.caption("Walk-Forward验证仅基于历史数据滚动回测，不构成投资建议")
+            st.caption("滚动验证仅基于历史数据滚动回测，不构成投资建议")
     except Exception as exc:
-        st.caption(f"Walk-Forward验证暂不可用: {exc}")
+        st.caption(f"滚动验证暂不可用: {exc}")
 
 
 def render_governance_panel(st: Any) -> None:
@@ -845,7 +845,7 @@ def render_northstar_control_panel(st: Any) -> None:
     """渲染北极星系统控制面板。"""
     try:
         from northstar.engine.northstar_engine import NorthstarEngine
-        with st.expander("🧠 Northstar System Control Panel", expanded=False):
+        with st.expander("🧠 北极星系统控制面板", expanded=False):
             engine = NorthstarEngine(total_capital=100000.0)
             report = engine.run_daily_cycle()
             sd = report.get("system_decision", {})
@@ -885,7 +885,7 @@ def render_execution_reality_panel(st: Any) -> None:
     """渲染执行现实层面板。"""
     try:
         from northstar.execution.execution_reality_engine import ExecutionRealityEngine
-        with st.expander("🌍 Execution Reality Layer", expanded=False):
+        with st.expander("🌍 执行现实层", expanded=False):
             ere = ExecutionRealityEngine()
             signals = [
                 {"symbol": "NVDA", "signal": "BUY", "confidence": 0.85},
@@ -965,7 +965,7 @@ def render_shadow_trading_panel(st: Any) -> None:
     """渲染影子实盘控制面板。"""
     try:
         from northstar.shadow.shadow_trading_engine import ShadowTradingEngine
-        with st.expander("🧪 Shadow Trading Control Panel", expanded=False):
+        with st.expander("🧪 影子交易验证控制面板", expanded=False):
             shadow = ShadowTradingEngine()
             report = shadow.run_shadow_cycle()
             paper = report.get("paper_return", 0)
@@ -986,7 +986,7 @@ def render_shadow_trading_panel(st: Any) -> None:
                 st.warning("**漂移原因**")
                 for r in report.get("drift_reasons", []):
                     st.markdown(f"- {r}")
-            st.caption("Shadow Trading 仅模拟实时市场运行，不执行真实交易")
+            st.caption("影子交易验证仅模拟实时市场运行，不执行真实交易")
     except Exception as exc:
         st.caption(f"影子交易暂不可用: {exc}")
 
@@ -995,7 +995,7 @@ def render_market_calibration_panel(st: Any) -> None:
     """渲染市场现实校准面板。"""
     try:
         from northstar.calibration.market_calibration_engine import MarketCalibrationEngine
-        with st.expander("🌍 Market Calibration Control Panel", expanded=False):
+        with st.expander("🌍 市场校准控制面板", expanded=False):
             mce = MarketCalibrationEngine()
             report = mce.calibration_cycle({"real_return": 2.0}, {"shadow_return": 1.8}, {"paper_return": 2.5})
             alignment = report.get("reality_alignment_score", 0)
@@ -1024,7 +1024,7 @@ def render_reality_transition_panel(st: Any) -> None:
     """渲染现实迁移控制面板。"""
     try:
         from northstar.reality_transition.reality_transition_engine import RealityTransitionEngine
-        with st.expander("🌐 Reality Transition Control Panel (v2)", expanded=False):
+        with st.expander("🌐 现实过渡控制面板 (v2)", expanded=False):
             rte = RealityTransitionEngine()
             report = rte.run_reality_mirror_cycle()
             rmai = report.get("rmai_score", 0)
@@ -1056,14 +1056,14 @@ def render_reality_transition_panel(st: Any) -> None:
             st.markdown(f"- 切换概率: {report.get('regime_switch_probability', 0):.0%}")
             st.markdown(f"- 动态RMAI: {report.get('dynamic_rmai', 0):.0f} (乘数{report.get('rmai_multiplier', 0):.2f})")
             st.markdown(f"- 信号分配: {report.get('regime_adjusted_allocation_signal', 0):.0f}/100")
-            st.markdown("**🧪 Stress Test**")
+            st.markdown("**🧪 压力测试**")
             st.markdown(f"- RMAI波动率: {stress.get('rmai_volatility', 0):.1f}")
             st.markdown(f"- Breakdown频率: {stress.get('breakdown_trigger_frequency', 0):.0%}")
             st.markdown(f"- 误放行率: {stress.get('false_go_rate', 0):.2%} | 误杀率: {stress.get('false_no_go_rate', 0):.2%}")
-            st.markdown("**📊 Walk-Forward**")
+            st.markdown("**📊 滚动验证**")
             st.markdown(f"- 稳定性: {wfv.get('stability_score', 0):.0f} | Regime敏感: {wfv.get('regime_sensitivity', '?')}")
             st.markdown(f"- 窗口数: {wfv.get('windows_analyzed', 0)} | 对齐漂移: {wfv.get('avg_alignment_drift', 0):.1f}")
-            st.markdown("**🔬 Micro-Live Sandbox**")
+            st.markdown("**🔬 微额实盘沙盒**")
             st.markdown(f"- 操作: {micro.get('action', '?')} | PnL: ${micro.get('pnl', 0):,.0f}")
             st.markdown(f"- 滑点: {micro.get('slippage_pct', 0):.3f}% | 延迟: {micro.get('delay_ms', 0):.0f}ms")
             st.markdown(f"- RMAI修正: {micro.get('rmai_corrected', 0):.0f} | PnL对齐: {micro.get('pnl_alignment', 0):.2f}")
