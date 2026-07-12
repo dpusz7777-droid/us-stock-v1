@@ -223,16 +223,13 @@ class MockBrokerProvider(BaseBrokerProvider):
         self._broker_name = "mock"
 
     def _load_portfolio(self) -> dict[str, Any]:
-        """加载 portfolio JSON 文件。只读，不修改。"""
+        """Deprecated compatibility view backed by the canonical repository."""
         try:
-            data = json.loads(self._portfolio_path.read_text(encoding="utf-8"))
-        except FileNotFoundError:
+            from northstar.data.portfolio_snapshot import PortfolioRepository
+
+            return PortfolioRepository(self._portfolio_path).load().to_dict()
+        except Exception:
             return {}
-        except json.JSONDecodeError:
-            return {}
-        if not isinstance(data, dict):
-            return {}
-        return data
 
     def _mask_account_id(self, raw_id: str | None) -> str:
         """脱敏账户 ID：只保留前 4 位 + ***。"""
@@ -256,58 +253,51 @@ class MockBrokerProvider(BaseBrokerProvider):
                 read_only=True,
             )
 
-        account_data = data.get("account") or {}
-        raw_id = account_data.get("account_id")
-
-        import portfolio_service
         try:
-            state = portfolio_service.get_portfolio_snapshot(self._portfolio_path)
+            from northstar.data.portfolio_snapshot import PortfolioRepository
+
+            state = PortfolioRepository(self._portfolio_path).load()
         except Exception:
             state = None
-
-        cash = self._decimal(account_data.get("cash"))
-        buying_power = self._decimal(account_data.get("buying_power"))
-        total_equity = self._decimal(state.total_equity) if state is not None else None
-        positions_mv = self._decimal(state.total_market_value) if state is not None else None
-        unrealized = self._decimal(state.total_unrealized_pnl) if state is not None else None
-        realized = self._decimal(state.realized_pnl) if state is not None else None
+        raw_id = state.account_id if state is not None else None
+        cash = state.cash if state is not None else None
 
         return BrokerAccountSnapshot(
             account_id_masked=self._mask_account_id(raw_id),
             broker=self._broker_name,
-            base_currency=account_data.get("base_currency", "USD"),
+            base_currency=state.base_currency if state is not None else "USD",
             cash=cash,
-            buying_power=buying_power,
-            total_equity=total_equity,
-            positions_market_value=positions_mv,
-            unrealized_pnl=unrealized,
-            realized_pnl=realized,
+            buying_power=state.buying_power if state is not None else None,
+            total_equity=None,
+            positions_market_value=None,
+            unrealized_pnl=None,
+            realized_pnl=None,
             status=BROKER_STATUS_OK,
             source=self._source,
             read_only=True,
         )
 
     def get_positions(self) -> list[BrokerPosition]:
-        import portfolio_service
         try:
-            state = portfolio_service.get_portfolio_snapshot(self._portfolio_path)
+            from northstar.data.portfolio_snapshot import PortfolioRepository
+
+            state = PortfolioRepository(self._portfolio_path).load()
         except Exception:
             return []
 
         positions: list[BrokerPosition] = []
-        for symbol in sorted(state.positions):
-            pos = state.positions[symbol]
+        for pos in state.positions:
             positions.append(BrokerPosition(
                 symbol=pos.symbol,
                 display_name=pos.symbol,
                 asset_type="STOCK",
                 currency="USD",
-                shares=pos.shares,
-                avg_cost=pos.avg_cost,
-                last_price=pos.last_price,
-                market_value=pos.market_value,
-                unrealized_pnl=pos.unrealized_pnl,
-                unrealized_pnl_pct=pos.unrealized_pnl_pct,
+                shares=pos.quantity,
+                avg_cost=pos.average_cost,
+                last_price=None,
+                market_value=None,
+                unrealized_pnl=None,
+                unrealized_pnl_pct=None,
                 source=self._source,
             ))
         return positions
@@ -349,8 +339,8 @@ class MockBrokerProvider(BaseBrokerProvider):
             data = self._load_portfolio()
             has_data = bool(data)
             try:
-                import portfolio_service
-                state_ok = bool(portfolio_service.get_portfolio_snapshot(self._portfolio_path))
+                from northstar.data.portfolio_snapshot import PortfolioRepository
+                state_ok = bool(PortfolioRepository(self._portfolio_path).load())
             except Exception:
                 state_ok = False
             return {

@@ -68,6 +68,9 @@ def _fetch_portfolio_quotes(
         prices[quote.symbol] = {
             "price": quote.price,
             "price_as_of": quote.price_as_of,
+            "source": quote.source,
+            "currency": getattr(quote, "currency", "USD"),
+            "status": "valid",
         }
     return prices, quotes, tuple(warnings)
 
@@ -182,17 +185,17 @@ def build_briefing_data(
     positions: list[dict[str, Any]] = []
     if state is not None:
         account = {
-            "cash": str(state.cash) if state.cash is not None else None,
-            "buying_power": str(state.buying_power)
+            "cash": format(state.cash, ".2f") if state.cash is not None else None,
+            "buying_power": format(state.buying_power, ".2f")
             if state.buying_power is not None
             else None,
-            "total_equity": str(state.total_equity)
+            "total_equity": format(state.total_equity, ".2f")
             if state.total_equity is not None
             else None,
-            "total_market_value": str(state.total_market_value)
+            "total_market_value": format(state.total_market_value, ".2f")
             if state.total_market_value is not None
             else None,
-            "total_unrealized_pnl": str(state.total_unrealized_pnl)
+            "total_unrealized_pnl": format(state.total_unrealized_pnl, ".2f")
             if state.total_unrealized_pnl is not None
             else None,
             "prices_complete": state.prices_complete,

@@ -464,77 +464,79 @@ def apply_market_prices(
     state: PortfolioState,
     prices: Mapping[str, Mapping[str, Any] | Decimal],
 ) -> PortfolioState:
-    """把调用方提供的外部行情应用到持仓；本函数不访问网络。"""
+    """Deprecated adapter delegating all valuation math to P1-04."""
+    from datetime import datetime, timezone, timedelta
 
-    updated_positions: dict[str, PositionState] = {}
-    prices_complete = True
-
-    for symbol, position in state.positions.items():
-        price_data = prices.get(symbol)
-        if price_data is None:
-            updated_positions[symbol] = position
-            prices_complete = False
-            continue
-
-        if isinstance(price_data, Mapping):
-            last_price_value = price_data.get("price")
-            price_as_of_value = price_data.get("price_as_of")
-            price_as_of = (
-                _require_string(price_as_of_value, f"prices.{symbol}.price_as_of")
-                if price_as_of_value is not None
-                else None
-            )
-        else:
-            last_price_value = price_data
-            price_as_of = None
-
-        last_price = _to_decimal(
-            last_price_value, f"prices.{symbol}.price", allow_zero=False
-        )
-        market_value = position.shares * last_price
-        unrealized_pnl = market_value - position.cost_basis
-        unrealized_pnl_pct = (
-            unrealized_pnl / position.cost_basis * Decimal("100")
-            if position.cost_basis != ZERO
-            else None
-        )
-        updated_positions[symbol] = replace(
-            position,
-            last_price=last_price,
-            price_as_of=price_as_of,
-            market_value=market_value,
-            unrealized_pnl=unrealized_pnl,
-            unrealized_pnl_pct=unrealized_pnl_pct,
-        )
-
-    if prices_complete:
-        total_market_value = sum(
-            (position.market_value for position in updated_positions.values()),
-            start=ZERO,
-        )
-        total_unrealized = sum(
-            (position.unrealized_pnl for position in updated_positions.values()),
-            start=ZERO,
-        )
-    else:
-        total_market_value = None
-        total_unrealized = None
-
-    total_equity = (
-        state.cash + total_market_value
-        if state.cash_status == "known"
-        and state.cash is not None
-        and total_market_value is not None
-        else None
+    from northstar.data.market_snapshot import build_market_snapshot
+    from northstar.data.portfolio_snapshot import (
+        portfolio_state_from_mapping,
+        value_portfolio,
     )
+
+    class ExistingPriceProvider:
+        def get_price(self, symbol: str) -> dict[str, Any]:
+            raw = prices.get(symbol)
+            if not isinstance(raw, Mapping):
+                return {
+                    "symbol": symbol,
+                    "price": raw,
+                    "source": "unattributed_legacy_price",
+                    "as_of": None,
+                    "status": "error",
+                    "error_message": "legacy price lacks source/as_of",
+                }
+            return {
+                "symbol": symbol,
+                "price": raw.get("price"),
+                "currency": raw.get("currency", "USD"),
+                "source": raw.get("source", "legacy_price_adapter"),
+                "as_of": raw.get("as_of", raw.get("price_as_of")),
+                "status": raw.get("status", "valid"),
+                "is_stale": raw.get("is_stale", False),
+                "is_mock": raw.get("is_mock", False),
+                "error_message": raw.get("error_message"),
+            }
+
+    canonical_state = portfolio_state_from_mapping(
+        {
+            symbol: {
+                "quantity": position.shares,
+                "average_cost": position.avg_cost,
+                "currency": "USD",
+            }
+            for symbol, position in state.positions.items()
+        },
+        cash=state.cash,
+        updated_at=datetime.now(timezone.utc).isoformat(),
+    )
+    # This deprecated adapter receives already-fetched caller-supplied quotes. Formal
+    # freshness enforcement happens in the canonical snapshot chain; keeping a broad
+    # window here preserves historical report/briefing replay compatibility.
+    market_snapshot = build_market_snapshot(
+        state.positions, ExistingPriceProvider(), stale_after=timedelta(days=3650)
+    )
+    valued = value_portfolio(canonical_state, market_snapshot)
+    by_symbol = {position.symbol: position for position in valued.positions}
+    updated_positions = {
+        symbol: replace(
+            position,
+            last_price=by_symbol[symbol].current_price,
+            price_as_of=by_symbol[symbol].price_as_of,
+            market_value=by_symbol[symbol].market_value,
+            unrealized_pnl=by_symbol[symbol].unrealized_pnl,
+            unrealized_pnl_pct=by_symbol[symbol].unrealized_pnl_percent,
+        )
+        for symbol, position in state.positions.items()
+    }
     return replace(
         state,
         positions=updated_positions,
-        total_market_value=total_market_value,
-        total_unrealized_pnl=total_unrealized,
-        total_equity=total_equity,
+        total_market_value=valued.total_market_value,
+        total_unrealized_pnl=valued.total_unrealized_pnl,
+        total_equity=valued.total_asset_value,
         buying_power=state.buying_power if state.cash_status == "known" else None,
-        prices_complete=prices_complete,
+        prices_complete=valued.valuation_status in {"complete", "no_positions"},
+        warnings=tuple(state.warnings) + tuple(valued.warnings),
     )
 
 
@@ -544,6 +546,7 @@ def get_portfolio_snapshot(
 ) -> PortfolioState:
     """供其他模块调用的一站式只读入口。"""
 
-    document = load_portfolio(path)
-    state = build_portfolio_state(document)
+    from northstar.data.portfolio_snapshot import load_legacy_service_state
+
+    state = load_legacy_service_state(path)
     return apply_market_prices(state, prices) if prices is not None else state

@@ -87,6 +87,7 @@ class Signal:
         return {
             "symbol": self.symbol,
             "signal_type": self.signal_type.value,
+            "action": self.signal_type.value,
             "strength": self.strength,
             "confidence": self.confidence,
             "reason": self.reason,
@@ -155,6 +156,24 @@ class SignalEngine:
 
         return signals
 
+    def evaluate_unified(self, price_data: dict[str, Any]) -> Signal:
+        """Evaluate the deterministic V4 single-signal rule and publish once."""
+        signal = generate_signal(price_data)
+        event_bus.publish(SIGNAL_GENERATED, {
+            "signal": signal.to_dict(),
+            "has_portfolio": True,
+        })
+        return signal
+
+    def evaluate_unified_to_decision(
+        self,
+        *,
+        price_data: dict[str, Any],
+        decision_engine: Any,
+    ) -> Any:
+        """Bridge the unified signal into the existing read-only decision engine."""
+        return decision_engine.evaluate(self.evaluate_unified(price_data))
+
     def _evaluate_price_strategies(
         self, symbol: str, pr: PriceResultV2, change_pct: Decimal | None = None
     ) -> list[Signal]:
@@ -181,16 +200,7 @@ class SignalEngine:
             return signals
 
         if pr.status == "STALE":
-            # 陈旧数据无法生成动量信号
-            signals.append(Signal(
-                symbol=symbol,
-                signal_type=SignalType.HOLD,
-                strength=20,
-                confidence=0.2,
-                reason=f"Stale price data for {symbol}. "
-                       "Cannot generate momentum signals.",
-                source="price",
-            ))
+            # 陈旧数据不得进入正式信号链。
             return signals
 
         # 默认 HOLD
@@ -383,3 +393,37 @@ class SignalEngine:
 # ---------------------------------------------------------------------------
 
 signal_engine = SignalEngine()
+
+
+def generate_signal(inputs: dict[str, Any]) -> Signal:
+    """Compatibility entry for the V4 unified single-signal rule.
+
+    Inputs use decimal ratios (0.03 == 3%). Risk reduction has priority over
+    directional momentum. This helper is pure and never executes an order.
+    """
+    symbol = str(inputs.get("symbol") or "UNKNOWN").strip().upper() or "UNKNOWN"
+    try:
+        change_pct = Decimal(str(inputs.get("change_pct", 0) or 0))
+    except Exception:
+        change_pct = Decimal("0")
+    try:
+        volatility = Decimal(str(inputs.get("volatility", 0) or 0))
+    except Exception:
+        volatility = Decimal("0")
+
+    if volatility > Decimal("0.03"):
+        kind, strength, confidence, reason = SignalType.REDUCE, 80, 0.8, "Volatility above 3%; reduce risk."
+    elif change_pct > Decimal("0.02"):
+        kind, strength, confidence, reason = SignalType.BUY, 75, 0.7, "Positive move above 2%."
+    elif change_pct < Decimal("-0.02"):
+        kind, strength, confidence, reason = SignalType.SELL, 75, 0.7, "Negative move below -2%."
+    else:
+        kind, strength, confidence, reason = SignalType.HOLD, 30, 0.5, "No unified signal threshold crossed."
+    return Signal(
+        symbol=symbol,
+        signal_type=kind,
+        strength=strength,
+        confidence=confidence,
+        reason=reason,
+        source="unified",
+    )

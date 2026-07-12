@@ -47,6 +47,18 @@ DEFAULT_STOP_LOSS_PCT = Decimal("8")
 DEFAULT_TARGET_PROFIT_PCT = Decimal("25")
 
 
+def log_event(*args, **kwargs):
+    from stability import log_event as implementation
+    return implementation(*args, **kwargs)
+
+
+def should_block_duplicate_run(report_type: str, *, force: bool = False) -> bool:
+    if force:
+        return False
+    from stability import has_run_today
+    return has_run_today(report_type)
+
+
 def run_script(name: str, args: list = None):
     """运行子模块"""
     cmd = [sys.executable, str(ROOT / name)]
@@ -114,6 +126,9 @@ def fetch_portfolio_quotes(
         prices[quote.symbol] = {
             "price": quote.price,
             "price_as_of": quote.price_as_of,
+            "source": quote.source,
+            "currency": getattr(quote, "currency", "USD"),
+            "status": "valid",
         }
 
     return prices, quotes, tuple(warnings)
@@ -242,12 +257,24 @@ def print_daily_report(
     print("\n[账户摘要]")
     print(f"持仓数量: {len(state.positions)}")
     print(f"持仓总成本: ${state.total_cost_basis:,.2f}")
-    print(f"当前市值: {_money_or_unknown(state.total_market_value)}")
-    print(f"未实现盈亏: {_money_or_unknown(state.total_unrealized_pnl)}")
+    all_priced = bool(state.positions) and all(
+        position.market_value is not None for position in state.positions.values()
+    )
+    display_market_value = state.total_market_value
+    display_unrealized = state.total_unrealized_pnl
+    if all_priced and display_market_value is None:
+        display_market_value = sum(
+            (position.market_value for position in state.positions.values()), start=Decimal("0")
+        )
+        display_unrealized = sum(
+            (position.unrealized_pnl for position in state.positions.values()), start=Decimal("0")
+        )
+    print(f"当前市值: {_money_or_unknown(display_market_value)}")
+    print(f"未实现盈亏: {_money_or_unknown(display_unrealized)}")
     if state.total_cost_basis:
         report_pnl_pct = (
-            state.total_unrealized_pnl / state.total_cost_basis * Decimal("100")
-            if state.total_unrealized_pnl is not None
+            display_unrealized / state.total_cost_basis * Decimal("100")
+            if display_unrealized is not None
             else None
         )
     else:
@@ -266,7 +293,7 @@ def print_daily_report(
     if not state.positions:
         print("暂无持仓")
     else:
-        allocation_base = state.total_equity or state.total_market_value
+        allocation_base = state.total_equity or display_market_value
         print(
             f"{'代码':>8} {'股数':>12} {'平均成本':>14} {'当前价格':>14} "
             f"{'当前市值':>14} {'未实现盈亏':>14} {'盈亏率':>12} {'仓位占比':>12}"
@@ -533,6 +560,7 @@ def _print_b6_result(result: dict) -> None:
 
 def main():
     parser = argparse.ArgumentParser(description="📊 美股研究系统 v1.0")
+    parser.add_argument("--safe", action="store_true", help="只验证命令，不执行写入或联网动作")
     sub = parser.add_subparsers(dest="command")
 
     # dashboard
@@ -702,6 +730,7 @@ def main():
         help="可用现金",
     )
     p.add_argument("--buying-power", help="购买力；不填则保留现有值或使用现金")
+    p.add_argument("--force", action="store_true", help="跳过重复运行护栏")
     p.add_argument(
         "--no-legacy-sync",
         action="store_true",
@@ -724,9 +753,12 @@ def main():
 
     args = parser.parse_args()
 
+    if args.safe:
+        print("[SAFE] 安全模式：未执行联网、同步、报告写入或交易动作。")
+        return
+
     if args.command == "dashboard":
-        from dashboard_service import run_dashboard
-        run_dashboard()
+        show_product_dashboard(args.portfolio_file)
 
     elif args.command == "doctor":
         show_doctor(
@@ -785,11 +817,7 @@ def main():
         if args.daily:
             show_daily_report(args.portfolio_file)
         else:
-            from backtest_report_generator import run_report
-            run_report(
-                symbols=[args.symbol] if args.symbol else None,
-                force=getattr(args, 'force', False),
-            )
+            print("请使用: python main.py report --daily")
 
     elif args.command == "full":
         from system_controller import SystemController
@@ -817,11 +845,14 @@ def main():
             show_briefing(args.portfolio_file, args.watchlist)
 
     elif args.command == "morning":
-        show_morning_briefing(
-            args.portfolio_file,
-            args.watchlist,
-            save_report=args.save,
-        )
+        if args.save and should_block_duplicate_run("morning"):
+            print("[已阻止] morning 已在当前时间窗口执行过。 如确需重新执行，请使用 --force。")
+        else:
+            show_morning_briefing(
+                args.portfolio_file,
+                args.watchlist,
+                save_report=args.save,
+            )
 
     elif args.command == "evening":
         show_evening_briefing(

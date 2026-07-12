@@ -62,6 +62,7 @@ class OrderStatus(str, Enum):
     FILLED = "FILLED"
     REJECTED = "REJECTED"
     PARTIAL = "PARTIAL"
+    NO_OP = "NO_OP"
 
 
 # ---------------------------------------------------------------------------
@@ -151,8 +152,8 @@ class ExecutionEngine:
     """模拟交易执行引擎 (Paper Trading Only)."""
 
     # 滑点范围 (用于随机模式)
-    MIN_SLIPPAGE = Decimal("0.000")    # 0%
-    MAX_SLIPPAGE = Decimal("0.001")    # 0.1%
+    MIN_SLIPPAGE = Decimal("0.001")    # 0.1%
+    MAX_SLIPPAGE = Decimal("0.003")    # 0.3%
 
     # 部分成交比例 (REDUCE 时)
     REDUCE_FILL_RATIO = Decimal("0.5")  # 减仓一半
@@ -199,10 +200,24 @@ class ExecutionEngine:
         order_id = f"SIM-{self._order_counter:06d}"
 
         action = decision.action
+        submitted = {
+            "order_id": order_id,
+            "symbol": decision.symbol,
+            "action": action.value,
+            "market_price": str(market_price),
+            "requested_qty": str(requested_qty) if requested_qty is not None else None,
+        }
+        event_bus.publish(ORDER_SUBMITTED, {"execution_order": submitted})
 
         # HOLD → 不执行
         if action == DecisionAction.HOLD:
-            return None
+            return ExecutionResult(
+                order_id=order_id,
+                symbol=decision.symbol,
+                action=action.value,
+                status=OrderStatus.NO_OP,
+                slippage=Decimal("0"),
+            )
 
         # BLOCKED → REJECTED
         if action == DecisionAction.BLOCKED:
@@ -284,6 +299,11 @@ class ExecutionEngine:
             filled_qty=qty,
             requested_qty=qty,
         )
+        event_bus.publish(ORDER_SUBMITTED, {"execution_order": {
+            "order_id": order_id, "symbol": decision.symbol,
+            "action": decision.action.value, "market_price": str(market_price),
+            "requested_qty": str(qty),
+        }})
         event_bus.publish(ORDER_FILLED, {"execution_result": result.to_dict()})
         return result
 
@@ -295,7 +315,13 @@ class ExecutionEngine:
         """手动拒绝订单。"""
         order_id = f"SIM-REJ-{self._order_counter:06d}"
         self._order_counter += 1
-        return self._reject_order(order_id, decision, reason)
+        event_bus.publish(ORDER_SUBMITTED, {"execution_order": {
+            "order_id": order_id, "symbol": decision.symbol,
+            "action": decision.action.value, "market_price": None, "requested_qty": None,
+        }})
+        result = self._reject_order(order_id, decision, reason)
+        event_bus.publish(ORDER_REJECTED, {"execution_result": result.to_dict()})
+        return result
 
     def partial_fill(
         self,

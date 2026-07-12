@@ -18,6 +18,40 @@ DEFAULT_REPORTS_DIR = Path(__file__).parent / "reports"
 DEFAULT_INDEX_FILE = DEFAULT_REPORTS_DIR / "index.json"
 DEFAULT_PORTFOLIO_FILE = Path(__file__).parent / "portfolio_migrated_candidate.json"
 
+REPORT_STATUS_PASS = "PASS"
+REPORT_STATUS_SKIPPED = "SKIPPED"
+REPORT_STATUS_DEGRADED = "DEGRADED"
+REPORT_STATUS_FAIL = "FAIL"
+
+
+def audit_report_index(
+    reports_dir: str | Path = DEFAULT_REPORTS_DIR,
+    *,
+    index_path: str | Path = DEFAULT_INDEX_FILE,
+) -> dict[str, Any]:
+    """Return non-fatal local index integrity findings for stability checks."""
+    directory = Path(reports_dir)
+    data = _read_index(index_path)
+    findings: list[str] = []
+    for item in data.get("reports", []):
+        if not isinstance(item, dict):
+            findings.append("报告索引包含非对象记录。")
+            continue
+        raw_path = item.get("file_path")
+        if not raw_path:
+            findings.append("报告索引记录缺少 file_path。")
+            continue
+        path = Path(str(raw_path))
+        candidates = (path, directory / path.name)
+        if not any(candidate.is_file() for candidate in candidates):
+            findings.append(f"索引文件不存在：{path.as_posix()}")
+    return {"status": REPORT_STATUS_PASS if not findings else REPORT_STATUS_DEGRADED, "warnings": findings}
+
+
+def flatten_report_audit(audit: dict[str, Any]) -> list[str]:
+    """Normalize an audit payload into user-facing continuity warnings."""
+    return [str(item) for item in audit.get("warnings", []) if str(item).strip()]
+
 
 def portfolio_snapshot_hash(portfolio_path: str | Path = DEFAULT_PORTFOLIO_FILE) -> str:
     path = Path(portfolio_path)

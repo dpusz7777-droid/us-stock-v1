@@ -54,6 +54,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping
+from urllib.parse import quote
 
 # ---------------------------------------------------------------------------
 # Status constants
@@ -83,7 +84,7 @@ DEFAULT_CACHE_DIR = ROOT / ".cache" / "prices"
 DEFAULT_MEMORY_TTL = 60       # seconds
 DEFAULT_DISK_TTL = 300        # seconds
 DEFAULT_TIMEOUT = 10          # seconds
-DEFAULT_RETRIES = 2
+DEFAULT_RETRIES = 1
 
 # ---------------------------------------------------------------------------
 # Unified result object
@@ -98,6 +99,7 @@ class PriceResultV2:
     price: Decimal | None
     currency: str = "USD"
     market_time: str | None = None
+    previous_close: Decimal | None = None
     source: str = "unknown"
     status: str = PRICE_STATUS_OK
     error_code: str | None = None
@@ -105,11 +107,17 @@ class PriceResultV2:
     cached: bool = False
     latency_ms: float = 0.0
     fetched_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    is_realtime: bool = False
+    is_mock: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         dct = asdict(self)
         if self.price is not None:
             dct["price"] = str(self.price)
+        if self.previous_close is not None:
+            dct["previous_close"] = str(self.previous_close)
+        dct["as_of"] = self.market_time or self.fetched_at
+        dct["is_stale"] = self.status == PRICE_STATUS_STALE
         return dct
 
     @property
@@ -174,7 +182,7 @@ class _MemoryCache:
         if entry is None:
             return None
         ts, result = entry
-        if time.monotonic() - ts > self._ttl:
+        if time.monotonic() - ts >= self._ttl:
             del self._data[symbol]
             return None
         return result
@@ -206,7 +214,7 @@ class _DiskCache:
     def _path(self, symbol: str) -> Path:
         return (self._dir or Path()) / f"{symbol}.json"
 
-    def get(self, symbol: str) -> PriceResultV2 | None:
+    def get(self, symbol: str, *, allow_expired: bool = False) -> PriceResultV2 | None:
         if self._dir is None:
             return None
         path = self._path(symbol)
@@ -214,8 +222,7 @@ class _DiskCache:
             return None
         try:
             age = time.time() - path.stat().st_mtime
-            if age > self._ttl:
-                path.unlink(missing_ok=True)
+            if age >= self._ttl and not allow_expired:
                 return None
             data = json.loads(path.read_text(encoding="utf-8"))
             return PriceResultV2(
@@ -223,10 +230,16 @@ class _DiskCache:
                 price=Decimal(str(data["price"])) if data.get("price") else None,
                 currency=data.get("currency", "USD"),
                 market_time=data.get("market_time"),
+                previous_close=(
+                    Decimal(str(data["previous_close"]))
+                    if data.get("previous_close") is not None else None
+                ),
                 source=data.get("source", "cache"),
-                status=PRICE_STATUS_OK,
+                status=PRICE_STATUS_STALE if age >= self._ttl else PRICE_STATUS_OK,
                 cached=True,
                 fetched_at=data.get("fetched_at", ""),
+                is_realtime=False,
+                is_mock=bool(data.get("is_mock", False)),
             )
         except (json.JSONDecodeError, OSError, KeyError, InvalidOperation):
             return None
@@ -264,12 +277,14 @@ class YFinanceProviderV2(BasePriceProviderV2):
         retries: int = DEFAULT_RETRIES,
         disk_cache: _DiskCache | None = None,
         memory_cache: _MemoryCache | None = None,
+        session: Any | None = None,
     ):
         self._ticker_factory = ticker_factory
         self._timeout = max(1, int(timeout))
         self._retries = max(0, int(retries))
         self._disk_cache = disk_cache or _DiskCache()
         self._memory_cache = memory_cache or _MemoryCache()
+        self._session = session
         self._cache_error: str | None = None
 
     def _get_ticker_factory(self) -> Callable[[str], Any]:
@@ -282,6 +297,9 @@ class YFinanceProviderV2(BasePriceProviderV2):
         return yf.Ticker
 
     def _result_from_live(self, symbol: str) -> PriceResultV2:
+        if self._ticker_factory is None:
+            return self._result_from_chart(symbol)
+
         start = time.monotonic()
         ticker_factory = self._get_ticker_factory()
         old_timeout = socket.getdefaulttimeout()
@@ -358,9 +376,11 @@ class YFinanceProviderV2(BasePriceProviderV2):
                 price=price_value,
                 currency="USD",
                 market_time=market_time or datetime.now(timezone.utc).isoformat(),
+                previous_close=previous_close_value,
                 source=source_text,
                 status=PRICE_STATUS_OK,
                 latency_ms=elapsed,
+                is_realtime=False,
             )
         except socket.timeout:
             elapsed = (time.monotonic() - start) * 1000
@@ -387,6 +407,102 @@ class YFinanceProviderV2(BasePriceProviderV2):
         finally:
             socket.setdefaulttimeout(old_timeout)
 
+    def _result_from_chart(self, symbol: str) -> PriceResultV2:
+        """Fetch one quote through Yahoo Chart v8 using the shared project session."""
+        start = time.monotonic()
+        try:
+            import requests
+            from northstar.config.network import get_price_provider_session, get_request_timeout
+
+            session = self._session or get_price_provider_session()
+            configured = get_request_timeout()
+            timeout = (
+                min(float(self._timeout), configured[0]),
+                min(float(self._timeout), configured[1]),
+            )
+            encoded = quote(symbol, safe="")
+            errors: list[str] = []
+            for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
+                endpoint = f"https://{host}/v8/finance/chart/{encoded}"
+                try:
+                    response = session.get(
+                        endpoint,
+                        params={"range": "5d", "interval": "1d", "events": "div,splits"},
+                        timeout=timeout,
+                    )
+                    if response.status_code != 200:
+                        errors.append(f"{host} HTTP {response.status_code}")
+                        continue
+                    chart = response.json().get("chart", {})
+                    if chart.get("error"):
+                        errors.append(f"{host} chart_error={chart['error']}")
+                        continue
+                    rows = chart.get("result") or []
+                    if not rows:
+                        errors.append(f"{host} empty_result")
+                        continue
+                    item = rows[0]
+                    meta = item.get("meta") or {}
+                    timestamps = item.get("timestamp") or []
+                    quote_rows = ((item.get("indicators") or {}).get("quote") or [{}])[0]
+                    closes = quote_rows.get("close") or []
+                    valid = [
+                        (int(timestamps[index]), value)
+                        for index, value in enumerate(closes)
+                        if index < len(timestamps) and value is not None and float(value) > 0
+                    ]
+                    raw_price = meta.get("regularMarketPrice")
+                    if raw_price is None and valid:
+                        raw_price = valid[-1][1]
+                    if raw_price is None or Decimal(str(raw_price)) <= 0:
+                        errors.append(f"{host} no_positive_price")
+                        continue
+                    raw_previous = meta.get("chartPreviousClose", meta.get("previousClose"))
+                    market_epoch = meta.get("regularMarketTime")
+                    if market_epoch is None and valid:
+                        market_epoch = valid[-1][0]
+                    market_time = (
+                        datetime.fromtimestamp(float(market_epoch), tz=timezone.utc).isoformat()
+                        if market_epoch is not None else datetime.now(timezone.utc).isoformat()
+                    )
+                    market_state = str(meta.get("marketState") or "").upper()
+                    return PriceResultV2(
+                        symbol=symbol,
+                        price=Decimal(str(raw_price)),
+                        previous_close=(Decimal(str(raw_previous)) if raw_previous is not None else None),
+                        currency=str(meta.get("currency") or "USD"),
+                        market_time=market_time,
+                        source="yahoo-chart-v8",
+                        status=PRICE_STATUS_OK,
+                        latency_ms=(time.monotonic() - start) * 1000,
+                        is_realtime=market_state in {"REGULAR", "PRE", "POST"},
+                    )
+                except requests.Timeout as exc:
+                    errors.append(f"{host} {type(exc).__name__}")
+                except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
+                    errors.append(f"{host} {type(exc).__name__}: {exc}")
+            message = "; ".join(errors) or "Yahoo Chart returned no usable result"
+            status = PRICE_STATUS_TIMEOUT if any("Timeout" in item for item in errors) else PRICE_STATUS_PROVIDER_ERROR
+            return PriceResultV2(
+                symbol=symbol,
+                price=None,
+                source="yahoo-chart-v8",
+                status=status,
+                error_code="YAHOO_CHART_FAILED",
+                error_message=message,
+                latency_ms=(time.monotonic() - start) * 1000,
+            )
+        except Exception as exc:
+            return PriceResultV2(
+                symbol=symbol,
+                price=None,
+                source="yahoo-chart-v8",
+                status=PRICE_STATUS_PROVIDER_ERROR,
+                error_code="PROVIDER_ERROR",
+                error_message=f"{type(exc).__name__}: {exc}",
+                latency_ms=(time.monotonic() - start) * 1000,
+            )
+
     def get_price(self, symbol: str) -> PriceResultV2:
         sym = symbol.strip().upper()
         if not sym:
@@ -403,7 +519,14 @@ class YFinanceProviderV2(BasePriceProviderV2):
         if cached is not None:
             return cached
 
-        # 2. Live quote with retries
+        # 2. Reuse a still-fresh disk quote before making a network request.
+        if self._ticker_factory is None:
+            cached = self._disk_cache.get(sym)
+            if cached is not None:
+                self._memory_cache.set(sym, cached)
+                return cached
+
+        # 3. Live quote with finite retries
         last_result: PriceResultV2 | None = None
         for attempt in range(self._retries + 1):
             result = self._result_from_live(sym)
@@ -413,12 +536,12 @@ class YFinanceProviderV2(BasePriceProviderV2):
                 self._disk_cache.set(result)
                 return result
             last_result = result
-            if result.status == PRICE_STATUS_TIMEOUT and attempt < self._retries:
+            if result.status in {PRICE_STATUS_TIMEOUT, PRICE_STATUS_PROVIDER_ERROR} and attempt < self._retries:
                 continue  # retry on timeout
             break
 
-        # 3. Live failed — try disk cache for STALE or OK fallback
-        stale = self._disk_cache.get(sym)
+        # 4. Live failed — an expired disk quote is allowed only as explicit STALE data.
+        stale = self._disk_cache.get(sym, allow_expired=True)
         if stale is not None:
             stale.status = PRICE_STATUS_STALE
             stale.cached = True
@@ -431,7 +554,7 @@ class YFinanceProviderV2(BasePriceProviderV2):
             self._memory_cache.set(sym, stale)
             return stale
 
-        # 4. Complete failure (no cache, no live)
+        # 5. Complete failure (no cache, no live)
         if last_result is None:
             return PriceResultV2(
                 symbol=sym,
