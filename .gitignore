@@ -25,7 +25,6 @@ portfolio_migrated_candidate_old.json
 position-information-*.xlsx
 portfolio_config.json
 usmart_holdings.*
-watchlist.json
 short_watchlist.json
 portfolio_history.json
 account_config.json
@@ -107,3 +106,35 @@ polaris.py
 # ── 测试临时文件 ──
 tests/__pycache__/
 tests/.pytest_cache/
+
+# ── 运行报告（每日生成，不提交） ──
+reports/*.json
+reports/*.md
+reports/*.patch
+reports/*.txt
+reports/daily_decision/
+
+# ── 审计文档（一次性修复记录，不提交） ──
+docs/audit/
+
+# ── 调试脚本（本地专用，不提交） ──
+debug_asset_holding.py
+debug_usmart_full_test.py
+debug_usmart_login.py
+
+# ── 备份文件 ──
+*.backup-*.json
+*.backup-*
+*_backup/
+backup/
+
+# ── 项目外的同步备份目录 ──
+../北极星同步备份/
+
+# ── 缓存文件 ──
+.backtest_cache.json
+eval_data.json
+execution_queue.json
+historical_run_log.txt
+instruments.json
+state_snapshot.json
