@@ -4,7 +4,7 @@
 
 功能：
     - 读取 recommendations.json 或现有推荐数据
-    - 自动拉取当前价格（复用现有 yfinance / price_provider_v2）
+    - 自动拉取当前价格（复用现有 northstar.data.yahoo_quote_provider.fetch_quotes）
     - 计算每条推荐的 pnl_percent, pnl_absolute, max_drawdown, holding_days
     - 输出结构化列表 recommendation_performance_report
     - 统计函数 get_strategy_stats() 返回整体表现
@@ -12,7 +12,7 @@
 依赖方向：
     recommendation_tracker.py (此文件)
     ├── northstar/data/recommendation_store.py (读取推荐数据)
-    ├── price_provider_v2.py (获取当前价格)
+    ├── northstar.data.yahoo_quote_provider (获取当前价格)
     └── 不修改券商数据 / 不生成交易指令 / 只读模式
 
 文件位置：
@@ -27,24 +27,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-# ── 缓存价格提供者 ──
-_PROVIDER: Any = None
+# ── 内存价格缓存（批量预取优化） ──
+_price_cache: dict[str, tuple[float | None, str | None]] = {}
 
 
-def _get_provider():
-    """懒加载价格提供者，复用 recommendation_review 中的方式。"""
-    global _PROVIDER
-    if _PROVIDER is not None:
-        return _PROVIDER
-    root = Path(__file__).resolve().parent.parent.parent
-    if str(root) not in sys.path:
-        sys.path.insert(0, str(root))
-    try:
-        from price_provider_v2 import get_price_provider_v2
-        _PROVIDER = get_price_provider_v2(use_cache=True, timeout=10, retries=1)
-    except Exception:
-        _PROVIDER = None
-    return _PROVIDER
+def _clear_price_cache() -> None:
+    """清空价格缓存，主要用于测试。"""
+    _price_cache.clear()
 
 
 def _is_valid_symbol(symbol: str) -> bool:
@@ -94,22 +83,32 @@ def _resolve_direction(action: str) -> str:
 
 
 def _fetch_current_price(symbol: str) -> tuple[float | None, str | None]:
-    """获取当前价格，返回 (价格, 错误信息)。
+    """获取单只股票当前价格，返回 (价格, 错误信息)。
 
-    复用现有 price_provider_v2，与 recommendation_review 保持一致。
-    如果没有价格提供者，返回 (None, "价格模块未加载")。
+    通过 northstar.data.yahoo_quote_provider.fetch_quotes 获取行情。
+    价格失败时返回 (None, 错误信息)，不抛异常，不下单。
     """
-    provider = _get_provider()
-    if provider is None:
-        return None, "价格模块未加载"
+    from northstar.data.yahoo_quote_provider import fetch_quotes
+
+    normalized = symbol.strip().upper()
+    if not normalized:
+        return None, "空股票代码"
+
     try:
-        price_result = provider.get_price(symbol)
-        if price_result is not None and price_result.is_ok and price_result.price is not None:
-            return float(price_result.price), None
-        error_msg = price_result.error_message if price_result else "未知错误"
-        return None, error_msg
+        quotes = fetch_quotes([normalized])
+        quote = quotes.get(normalized, {})
+        if not isinstance(quote, dict):
+            return None, "价格数据格式异常"
+        error = quote.get("error")
+        if error is not None:
+            return None, str(error)
+        price = quote.get("price")
+        if price is None:
+            return None, "价格为空"
+        return float(price), None
     except Exception as exc:
         return None, str(exc)
+
 
 
 def compute_recommendation_performance(
