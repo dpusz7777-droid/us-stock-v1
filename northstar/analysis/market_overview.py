@@ -45,35 +45,31 @@ class IndexData:
     above_ma20: bool = False
     above_ma60: bool = False
     tech_status: str = "中性"
+    data_complete: bool = False
+    history_rows: int = 0
+    data_source: str = "unavailable"
+    failure_reason: str = ""
 
 
 def fetch_market_overview() -> dict[str, IndexData]:
     """获取大盘指数数据和技术分析。"""
-    from northstar.config.network import apply_proxy_environment
-    from price_provider import YFinancePriceProvider
-
-    apply_proxy_environment()
-    provider = YFinancePriceProvider()
-
     import numpy as np
+    from northstar.data.yahoo_chart_provider import fetch_chart_history
 
     result: dict[str, IndexData] = {}
 
     for sym in INDEX_SYMBOLS:
         idx = IndexData(symbol=sym, name=INDEX_NAMES.get(sym, sym))
         try:
-            tf = provider._get_ticker_factory()
-            ticker = tf(sym)
-            hist = ticker.history(period="3mo", interval="1d")
-
-            if hist is None or hist.empty:
-                result[sym] = idx
-                continue
-
-            closes = hist["Close"].dropna().values.astype(float)
+            query_symbol = "^VIX" if sym == "VIX" else sym
+            hist = fetch_chart_history(query_symbol, period="3mo", interval="1d")
+            closes = np.array([value for value in hist.close if value is not None and value > 0], dtype=float)
             if len(closes) == 0:
+                idx.failure_reason = "返回的收盘价为空"
                 result[sym] = idx
                 continue
+            idx.history_rows = len(closes)
+            idx.data_source = hist.source
 
             idx.current_price = float(closes[-1])
             if len(closes) >= 2:
@@ -100,8 +96,15 @@ def fetch_market_overview() -> dict[str, IndexData]:
                 if score >= 3: idx.tech_status = "强势"
                 elif score >= 1: idx.tech_status = "震荡"
                 else: idx.tech_status = "弱势"
+            idx.data_complete = bool(
+                idx.current_price > 0 and idx.history_rows >= 60
+                and idx.ma20 is not None and idx.ma60 is not None
+            )
+            if not idx.data_complete:
+                idx.failure_reason = f"大盘核心字段不完整，K线={idx.history_rows}"
         except Exception as exc:
-            logger.debug("获取 %s 大盘数据异常: %s", sym, exc)
+            idx.failure_reason = f"{type(exc).__name__}: {exc}"
+            logger.error("获取 %s 大盘数据失败: %s", sym, idx.failure_reason)
 
         result[sym] = idx
 
@@ -184,8 +187,6 @@ def generate_market_analysis_text(index_data: dict[str, IndexData]) -> str:
         parts.append("建议仓位控制在 5-7 成，精选个股，关注强势板块的补跌风险。")
     else:
         parts.append("市场环境较好，可适度积极操作，但仍需注意个股分化风险。")
-
-    parts.append("以上分析基于技术面数据，不构成投资建议。")
 
     result = "【大盘环境】" + "".join(parts)
     if len(result) < 300:

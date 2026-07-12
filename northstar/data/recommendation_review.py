@@ -146,7 +146,9 @@ def classify_market_regime(review_rows: list[dict]) -> str:
         wr = wc/len(grades) if grades else 0.5
         var = sum((x-ar)**2 for x in cps)/len(cps); vol = var**0.5
         extreme = sum(1 for x in cps if abs(x)>=5.0)/len(cps)
-        if extreme >= 0.3: return "high_volatility"
+        # High volatility requires a two-sided extreme regime; a directional
+        # +5%/-5% observation alone still belongs to bull/bear classification.
+        if extreme >= 0.3 and max(cps) >= 5.0 and min(cps) <= -5.0: return "high_volatility"
         if vol <= 0.02 and abs(ar) < 0.01: return "low_volatility"
         if wr >= 0.55 and ar > 0: return "bull"
         if wr <= 0.40 or (ar < 0 and wr < 0.5): return "bear"

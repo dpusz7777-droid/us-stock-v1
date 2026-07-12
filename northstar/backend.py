@@ -101,26 +101,56 @@ class BackendEngine:
         self._iteration += 1
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        from northstar.data.portfolio_state import PortfolioState
+        from decimal import Decimal
 
-        portfolio_state = PortfolioState()
-        holdings = portfolio_state.summary()
-        symbols = [position.symbol for position in holdings.positions]
+        from northstar.data.market_data_provider import MarketDataProvider
+        from northstar.data.market_snapshot import build_market_snapshot
+        from northstar.data.portfolio_snapshot import (
+            load_portfolio_state,
+            requested_market_symbols,
+            value_portfolio,
+        )
+        from northstar.reports.daily_decision_report import load_watchlist
+
+        portfolio_state = load_portfolio_state()
+        symbols = list(portfolio_state.position_symbols)
+        requested = requested_market_symbols(load_watchlist(), portfolio_state)
+        market_snapshot = build_market_snapshot(requested, MarketDataProvider())
+        portfolio_snapshot = value_portfolio(portfolio_state, market_snapshot)
 
         from northstar.core.signal_engine import SignalEngine
 
-        signal_engine = SignalEngine()
-        price_results = (
-            signal_engine.get_price_results(symbols) if symbols else {}
+        from price_provider_v2 import (
+            PRICE_STATUS_OK,
+            PRICE_STATUS_PROVIDER_ERROR,
+            PriceResultV2,
         )
-        summary = portfolio_state.summary(price_results)
+
+        signal_engine = SignalEngine(price_provider=object())
+        price_results = {
+            symbol: PriceResultV2(
+                symbol=symbol,
+                price=Decimal(str(market_snapshot.quote(symbol).price))
+                if market_snapshot.quote(symbol).decision_eligible
+                else None,
+                currency=market_snapshot.quote(symbol).currency,
+                market_time=market_snapshot.quote(symbol).as_of,
+                source=market_snapshot.quote(symbol).source,
+                status=PRICE_STATUS_OK
+                if market_snapshot.quote(symbol).decision_eligible
+                else PRICE_STATUS_PROVIDER_ERROR,
+                error_code=market_snapshot.quote(symbol).error_code,
+                error_message=market_snapshot.quote(symbol).error_message,
+            )
+            for symbol in symbols
+        }
         signals = (
             signal_engine.generate(symbols, price_results=price_results)
             if symbols
             else []
         )
         positions_by_symbol = {
-            position.symbol: position for position in summary.positions
+            position.symbol: position for position in portfolio_snapshot.positions
         }
 
         simulator = self._simulator
@@ -129,7 +159,7 @@ class BackendEngine:
             if position is None or position.current_price is None:
                 continue
             price = float(position.current_price)
-            quantity = int(position.shares) if position.shares > 0 else 10
+            quantity = int(position.quantity) if position.quantity > 0 else 10
             action = signal.signal_type.value
             if action in {"BUY", "INCREASE"}:
                 simulator.execute(
@@ -164,7 +194,7 @@ class BackendEngine:
         if simulator_initialized:
             simulator.record_equity_snapshot(
                 timestamp=now,
-                position_count=summary.position_count,
+                position_count=len(portfolio_snapshot.positions),
             )
             simulator.save_equity_curve()
         simulator.save_trade_history()
@@ -180,19 +210,32 @@ class BackendEngine:
                 "system_health": "OK",
                 "last_run_status": "running",
                 "iteration": self._iteration,
-                "position_count": summary.position_count,
-                "cash": _json_number(summary.cash),
+                "position_count": len(portfolio_snapshot.positions),
+                "cash": _json_number(portfolio_snapshot.cash),
                 "position_market_value": _json_number(
-                    summary.total_market_value
+                    portfolio_snapshot.total_market_value
                 ),
-                "total_equity": _json_number(summary.total_equity),
-                "equity": _json_number(summary.total_equity),
-                "unrealized_pnl": _json_number(summary.total_pnl),
-                "valuation_status": summary.valuation_status,
-                "valued_position_count": summary.valued_position_count,
-                "total_position_count": summary.total_position_count,
-                "missing_price_symbols": list(summary.missing_price_symbols),
-                "price_as_of": summary.price_as_of,
+                "total_equity": _json_number(portfolio_snapshot.total_asset_value),
+                "equity": _json_number(portfolio_snapshot.total_asset_value),
+                "unrealized_pnl": _json_number(portfolio_snapshot.total_unrealized_pnl),
+                "valuation_status": portfolio_snapshot.valuation_status,
+                "valued_position_count": sum(
+                    1 for position in portfolio_snapshot.positions
+                    if position.valuation_status == "complete"
+                ),
+                "total_position_count": len(portfolio_snapshot.positions),
+                "missing_price_symbols": list(portfolio_snapshot.missing_symbols),
+                "price_as_of": max(
+                    (
+                        position.price_as_of
+                        for position in portfolio_snapshot.positions
+                        if position.price_as_of
+                    ),
+                    default=None,
+                ),
+                "market_snapshot_id": market_snapshot.snapshot_id,
+                "portfolio_snapshot_id": portfolio_snapshot.portfolio_snapshot_id,
+                "portfolio_snapshot": portfolio_snapshot.to_dict(),
                 "price_snapshot": _price_snapshot(price_results),
                 "signals_count": len(signals),
                 "simulator_initialized": simulator_initialized,
@@ -207,8 +250,8 @@ class BackendEngine:
 
         sys.stdout.write(
             f"[{now}] Iteration {self._iteration}: "
-            f"signals={len(signals)}, valuation={summary.valuation_status}, "
-            f"total_equity={_json_number(summary.total_equity)}\n"
+            f"signals={len(signals)}, valuation={portfolio_snapshot.valuation_status}, "
+            f"total_equity={_json_number(portfolio_snapshot.total_asset_value)}\n"
         )
         sys.stdout.flush()
 

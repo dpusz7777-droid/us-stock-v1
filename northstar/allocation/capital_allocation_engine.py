@@ -115,7 +115,12 @@ class CapitalAllocationEngine:
         top2 = sum(sorted_weights[:2]) if len(sorted_weights) >= 2 else top1
         top3 = sum(sorted_weights[:3]) if len(sorted_weights) >= 3 else top2
 
-        constraints_ok = top1 <= MAX_SINGLE_WEIGHT and top2 <= MAX_TOP2_TOTAL and top3 <= MAX_TOP3_TOTAL
+        epsilon = 1e-9
+        constraints_ok = (
+            top1 <= MAX_SINGLE_WEIGHT + epsilon
+            and top2 <= MAX_TOP2_TOTAL + epsilon
+            and top3 <= MAX_TOP3_TOTAL + epsilon
+        )
 
         # 风险预算
         risk_budget = round(self.total_capital * (expected_drawdown / 100) * 0.5, 2)

@@ -64,11 +64,21 @@ class TechnicalIndicators:
     tech_status: str = "中性"   # 强势/修复/震荡/弱势/破位
     tech_risk: str = "中"       # 低/中/高
 
-    # 综合评分
-    opportunity_score: float = 50.0  # 0-100
+    # v2.1 做多可操作分：五个分项合计 100
+    opportunity_score: float = 0.0
     risk_score: float = 50.0
-    trend_score: float = 50.0
-    final_score: float = 50.0
+    trend_score: float = 0.0
+    momentum_score: float = 0.0
+    technical_position_score: float = 0.0
+    event_sentiment_score: float = 0.0
+    user_context_score: float = 0.0
+    long_actionability_score: float = 0.0
+    final_score: float = 0.0  # 旧调用兼容别名
+    action: str = "观察"
+    data_complete: bool = False
+    history_rows: int = 0
+    data_source: str = "unavailable"
+    failure_reason: str = ""
 
     # 中文分析总结（约200字）
     analysis_summary: str = ""
@@ -79,17 +89,9 @@ def fetch_technical_data(symbols: list[str]) -> dict[str, TechnicalIndicators]:
 
     通过 yfinance 获取最近 60 个交易日 OHLCV 数据，计算所有指标。
     """
-    import pandas as pd
     import numpy as np
     from northstar.reports.daily_decision_report import COMPANY_NAMES
-
-    from price_provider import YFinancePriceProvider
-
-    # 应用代理
-    from northstar.config.network import apply_proxy_environment
-    apply_proxy_environment()
-
-    provider = YFinancePriceProvider()
+    from northstar.data.yahoo_chart_provider import fetch_chart_history
     result: dict[str, TechnicalIndicators] = {}
 
     for symbol in symbols:
@@ -97,20 +99,18 @@ def fetch_technical_data(symbols: list[str]) -> dict[str, TechnicalIndicators]:
         ti = TechnicalIndicators(symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym))
 
         try:
-            tf = provider._get_ticker_factory()
-            ticker = tf(sym)
-
-            # 获取最近 60 个交易日数据
-            hist = ticker.history(period="3mo", interval="1d")
-            if hist is None or hist.empty:
-                logger.warning("无法获取 %s 历史K线数据", sym)
-                result[sym] = ti
-                continue
-
-            closes = hist["Close"].dropna().values.astype(float)
-            highs = hist["High"].dropna().values.astype(float) if "High" in hist else closes
-            lows = hist["Low"].dropna().values.astype(float) if "Low" in hist else closes
-            volumes = hist["Volume"].dropna().values.astype(float) if "Volume" in hist else None
+            hist = fetch_chart_history(sym, period="3mo", interval="1d")
+            rows = [
+                (close, high, low, volume)
+                for close, high, low, volume in zip(hist.close, hist.high, hist.low, hist.volume)
+                if close is not None and close > 0
+            ]
+            closes = np.array([row[0] for row in rows], dtype=float)
+            highs = np.array([row[1] if row[1] is not None else row[0] for row in rows], dtype=float)
+            lows = np.array([row[2] if row[2] is not None else row[0] for row in rows], dtype=float)
+            volumes = np.array([row[3] if row[3] is not None else 0 for row in rows], dtype=float)
+            ti.history_rows = len(closes)
+            ti.data_source = hist.source
 
             if len(closes) == 0:
                 result[sym] = ti
@@ -176,16 +176,38 @@ def fetch_technical_data(symbols: list[str]) -> dict[str, TechnicalIndicators]:
 
             # 综合评分
             scores = _compute_scores(ti)
-            ti.opportunity_score = scores["opportunity"]
+            ti.opportunity_score = scores["long_actionability"]
             ti.risk_score = scores["risk"]
             ti.trend_score = scores["trend"]
-            ti.final_score = scores["final"]
+            ti.momentum_score = scores["momentum"]
+            ti.technical_position_score = scores["technical_position"]
+            ti.long_actionability_score = scores["long_actionability"]
+            ti.final_score = ti.long_actionability_score
 
             # 中文分析总结
             ti.analysis_summary = _generate_analysis(ti)
+            ti.data_complete = all([
+                ti.current_price > 0, ti.history_rows >= 60,
+                ti.ma5 is not None, ti.ma20 is not None, ti.ma60 is not None,
+                ti.rsi14 is not None, ti.high_20d is not None, ti.low_20d is not None,
+                ti.volume_ratio is not None,
+            ])
+            if not ti.data_complete:
+                missing = [
+                    name for name, value in {
+                        "价格": ti.current_price > 0, "60日K线": ti.history_rows >= 60,
+                        "MA5": ti.ma5 is not None, "MA20": ti.ma20 is not None,
+                        "MA60": ti.ma60 is not None, "RSI14": ti.rsi14 is not None,
+                        "20日高点": ti.high_20d is not None, "20日低点": ti.low_20d is not None,
+                        "量比": ti.volume_ratio is not None,
+                    }.items() if not value
+                ]
+                ti.failure_reason = "核心字段缺失: " + "、".join(missing)
+                logger.error("%s 数据不完整: %s", sym, ti.failure_reason)
 
         except Exception as exc:
-            logger.debug("获取 %s 技术数据异常: %s", sym, exc)
+            ti.failure_reason = f"{type(exc).__name__}: {exc}"
+            logger.error("获取 %s 技术数据失败: %s", sym, ti.failure_reason)
 
         result[sym] = ti
 
@@ -263,122 +285,278 @@ def _judge_tech_risk(ti: TechnicalIndicators) -> str:
 
 
 def _compute_scores(ti: TechnicalIndicators) -> dict[str, float]:
-    """计算机会分、风险分、趋势分、综合分。"""
-    opp = 50.0
-    risk = 50.0
-    trend = 50.0
-
-    # 趋势加分
-    if ti.above_ma20:
-        trend += 15
-    if ti.above_ma60:
-        trend += 10
-    if ti.change_pct_5d is not None:
-        trend += max(-20, min(20, ti.change_pct_5d))
-    if ti.rsi14 is not None:
-        if 40 <= ti.rsi14 <= 60:
-            trend += 5
-
-    # 机会分
-    opp = trend * 0.6 + 20
-    if ti.volume_ratio and ti.volume_ratio > 1.2 and ti.change_pct_today > 0:
-        opp += 10
+    """计算技术数据可支持的三个分项；事件与用户分由报告层补入。"""
+    trend = 0.0
+    trend += 7 if ti.above_ma20 else 0
+    trend += 6 if ti.above_ma60 else 0
+    if ti.ma5 and ti.ma20 and ti.ma5 > ti.ma20:
+        trend += 5
+    if (ti.change_pct_5d or 0) > 0 and (ti.change_pct_20d or 0) > 0:
+        trend += 4
     if ti.tech_status == "强势":
-        opp += 10
-    elif ti.tech_status in ("弱势", "破位"):
-        opp -= 15
-    if ti.above_ma20:
-        opp += 5
-    opp = max(0, min(100, round(opp, 1)))
+        trend += 3
+    trend = min(25, trend)
 
-    # 风险分
-    risk = 100 - trend * 0.5 + 10
-    if ti.rsi14 is not None and ti.rsi14 > 75:
-        risk += 15
-    if ti.change_pct_20d is not None and ti.change_pct_20d < -15:
-        risk += 15
-    if ti.volume_ratio and ti.volume_ratio > 2 and ti.change_pct_today < 0:
-        risk += 10
-    if ti.tech_status in ("弱势", "破位"):
-        risk += 10
-    risk = max(0, min(100, round(risk, 1)))
+    momentum = 8.0
+    momentum += max(-4, min(4, (ti.change_pct_today or 0) * 1.2))
+    momentum += max(-4, min(4, (ti.change_pct_5d or 0) * .35))
+    if ti.volume_ratio is not None:
+        if ti.volume_ratio >= 1.3 and ti.change_pct_today > 0:
+            momentum += 5
+        elif ti.volume_ratio < .8 and ti.change_pct_today >= 0:
+            momentum += 2
+        elif ti.volume_ratio >= 1.5 and ti.change_pct_today < 0:
+            momentum -= 4
+    momentum = max(0, min(20, momentum))
 
-    # 综合分 = 机会分 - 风险分权重
-    final = max(0, min(100, round(opp * 0.6 - risk * 0.2 + trend * 0.2, 1)))
+    position = 8.0
+    if ti.rsi14 is not None:
+        if 40 <= ti.rsi14 <= 65:
+            position += 6
+        elif ti.rsi14 > 75 or ti.rsi14 < 30:
+            position -= 4
+    if ti.high_20d and ti.low_20d and ti.high_20d > ti.low_20d:
+        percentile = (ti.current_price - ti.low_20d) / (ti.high_20d - ti.low_20d)
+        if .55 <= percentile <= .9:
+            position += 4
+        elif percentile < .15:
+            position -= 3
+    if ti.tech_status == "破位":
+        position -= 5
+    position = max(0, min(20, position))
 
-    return {"opportunity": opp, "risk": risk, "trend": round(trend, 1), "final": final}
+    risk = 100 - (trend / 25 * 45 + momentum / 20 * 25 + position / 20 * 30)
+    long_score = trend + momentum + position
+    return {
+        "opportunity": round(long_score, 1), "risk": round(risk, 1),
+        "trend": round(trend, 1), "momentum": round(momentum, 1),
+        "technical_position": round(position, 1),
+        "long_actionability": round(long_score, 1), "final": round(long_score, 1),
+    }
 
 
-def _generate_analysis(ti: TechnicalIndicators) -> str:
-    """生成约 200 字的中文分析总结。"""
-    parts: list[str] = []
+def _generate_analysis(ti: TechnicalIndicators, is_held: bool = False) -> str:
+    """生成 200-260 字的中文个股综合分析。
+
+    包含 5 个小模块：
+    1. 【当前状态】
+    2. 【技术面】
+    3. 【机会判断】
+    4. 【风险提示】
+    5. 【操作建议】
+
+    Args:
+        ti: 技术指标数据
+        is_held: 是否为用户持仓
+    """
     sym = ti.symbol
     name = ti.company_cn or sym
 
-    # 开头
-    status_map = {"强势": "处于强势上涨通道", "修复": "正在修复阶段",
-                  "震荡": "处于震荡整理区间", "弱势": "处于弱势下跌趋势",
-                  "破位": "已破位下行"}
-    status_cn = status_map.get(ti.tech_status, "走势不明")
-    parts.append(f"{name}({sym})当前{status_cn}")
+    modules: list[str] = []
 
-    # 价格位置
+    # ── 1. 【当前状态】 ──
+    arrow = "上涨" if (ti.change_pct_today or 0) >= 0 else "下跌"
+    status_cn = ti.tech_status
+    # 均线状况
+    ma_status = []
     if ti.above_ma20 and ti.above_ma60:
-        parts.append("，成功站上 MA20 和 MA60，短期和中期均线支撑良好")
+        ma_status.append("站上 MA20 和 MA60")
     elif ti.above_ma20:
-        parts.append("，站上 MA20 但仍在 MA60 下方，中期趋势有待确认")
+        ma_status.append("站上 MA20 但 MA60 上方承压")
     elif ti.ma20 and ti.current_price < ti.ma20 * 0.95:
-        parts.append(f"，明显跌破 MA20，近 20 日均线压力较大")
+        ma_status.append("明显跌破 MA20")
     else:
-        parts.append("，均线系统方向不明，需等待选择方向")
+        ma_status.append("均线系统方向不明")
+    ma_str = "，".join(ma_status)
 
-    # RSI
+    modules.append(
+        f"【当前状态】{name}现报 ${ti.current_price:.2f}，"
+        f"今日{arrow} {(ti.change_pct_today or 0):+.1f}%。"
+        f"技术状态为【{status_cn}】，{ma_str}。"
+        f"近 5 日涨跌 {(ti.change_pct_5d or 0):+.1f}%，"
+        f"近 20 日涨跌 {(ti.change_pct_20d or 0):+.1f}%。"
+    )
+
+    # ── 2. 【技术面】 ──
+    tech_parts = []
+    if ti.ma5:
+        tech_parts.append(f"MA5=${ti.ma5:.2f}")
+    if ti.ma20:
+        tech_parts.append(f"MA20=${ti.ma20:.2f}")
+    if ti.ma60:
+        tech_parts.append(f"MA60=${ti.ma60:.2f}")
+    ma_line = "，".join(tech_parts)
+
+    rsi_desc = ""
     if ti.rsi14 is not None:
         if ti.rsi14 > 70:
-            parts.append(f"，RSI14 为 {ti.rsi14}，处于超买区域，短线追高风险较大")
+            rsi_desc = f"RSI14={ti.rsi14}，处于超买区域，需注意回调风险"
         elif ti.rsi14 < 30:
-            parts.append(f"，RSI14 为 {ti.rsi14}，处于超卖区域，存在技术性反弹可能")
+            rsi_desc = f"RSI14={ti.rsi14}，处于超卖区域，技术性反弹概率增加"
         else:
-            parts.append(f"，RSI14 为 {ti.rsi14}，处于中性区间")
+            rsi_desc = f"RSI14={ti.rsi14}，处于中性区间，未出现极端信号"
 
-    # 成交量
+    vol_desc = ""
     if ti.volume_ratio is not None:
-        if ti.volume_ratio > 1.5 and ti.change_pct_today > 0:
-            parts.append(f"，今日成交量放大至 20 日均量的 {ti.volume_ratio} 倍，量价配合良好")
-        elif ti.volume_ratio > 1.5 and ti.change_pct_today < 0:
-            parts.append(f"，今日放量下跌，成交量达 {ti.volume_ratio} 倍，抛压较大")
+        if ti.volume_ratio > 2.0 and (ti.change_pct_today or 0) > 0:
+            vol_desc = f"今日成交量异常放大至 20 日均量的 {ti.volume_ratio} 倍，量价齐升"
+        elif ti.volume_ratio > 2.0 and (ti.change_pct_today or 0) < 0:
+            vol_desc = f"今日放量下跌，成交量为 20 日均量的 {ti.volume_ratio} 倍，抛压明显"
+        elif ti.volume_ratio > 1.3:
+            vol_desc = f"成交量略高于 20 日均量（{ti.volume_ratio} 倍），市场关注度尚可"
         elif ti.volume_ratio < 0.7:
-            parts.append("，成交量萎缩，市场关注度下降")
+            vol_desc = f"成交量萎缩至 20 日均量的 {ti.volume_ratio} 倍，市场交投清淡"
         else:
-            parts.append("，成交量正常")
+            vol_desc = f"成交量处于正常水平（20 日均量的 {ti.volume_ratio} 倍）"
 
-    # 20日高低点
+    # 20日高低点位置
+    pos_desc = ""
     if ti.high_20d and ti.low_20d and ti.high_20d > ti.low_20d:
         pos_ratio = (ti.current_price - ti.low_20d) / (ti.high_20d - ti.low_20d) * 100
-        if pos_ratio > 80:
-            parts.append(f"，价格处于近 20 日高位区域（{pos_ratio:.0f}%分位）")
-        elif pos_ratio < 20:
-            parts.append(f"，价格处于近 20 日低位区域（{pos_ratio:.0f}%分位），关注能否企稳反弹")
+        if pos_ratio > 85:
+            pos_desc = f"当前价格接近 20 日高点(${ti.high_20d:.2f})，处于区间高位（{pos_ratio:.0f}%分位），追高需谨慎"
+        elif pos_ratio < 15:
+            pos_desc = f"当前价格接近 20 日低点(${ti.low_20d:.2f})，处于区间低位（{pos_ratio:.0f}%分位），关注能否企稳反弹"
         else:
-            parts.append(f"，价格在近 20 日区间中位震荡（{pos_ratio:.0f}%分位）")
+            pos_desc = f"当前价格在 20 日区间中位震荡（{pos_ratio:.0f}%分位），方向未明"
 
-    # 5日、20日趋势
-    if ti.change_pct_5d is not None:
-        if ti.change_pct_5d > 5:
-            parts.append(f"，近 5 日涨幅 {ti.change_pct_5d:+.1f}%，短线动能较强")
-        elif ti.change_pct_5d < -5:
-            parts.append(f"，近 5 日跌幅 {ti.change_pct_5d:.1f}%，短线承压")
+    modules.append(
+        f"【技术面】{ma_line}。{rsi_desc}。{vol_desc}。{pos_desc}。"
+    )
 
-    # 结论
-    if ti.tech_status == "强势":
-        parts.append("。综合来看，技术面偏强，可继续持有或关注加仓机会。")
-    elif ti.tech_status == "修复":
-        parts.append("。技术面正在改善中，建议保持观察，确认趋势后再操作。")
-    elif ti.tech_status == "震荡":
-        parts.append("。短期方向不明，建议耐心等待突破信号，不宜追涨杀跌。")
-    elif ti.tech_status == "弱势":
-        parts.append("。技术面偏弱，建议控制仓位，暂不急于抄底。")
-    elif ti.tech_status == "破位":
-        parts.append("。技术面明显破位，风险较大，建议暂时回避。")
+    # ── 3. 【机会判断】 ──
+    opp_parts = []
+    score = ti.final_score
+    if score >= 70:
+        opp_parts.append(f"综合评分 {score:.0f} 分，技术面偏强")
+        if ti.above_ma20 and ti.above_ma60:
+            opp_parts.append("多头排列清晰，短期和中期趋势共振向上")
+        if ti.rsi14 and ti.rsi14 < 65:
+            opp_parts.append("RSI 尚未过热，仍有上行空间")
+        if ti.volume_ratio and ti.volume_ratio > 1.2 and (ti.change_pct_today or 0) > 0:
+            opp_parts.append("量价配合良好，资金关注度提升")
 
-    return "".join(parts)
+        if ti.above_ma20:
+            opp_parts.append("可关注回踩 MA20 不破时的介入机会")
+        else:
+            opp_parts.append("但目前仍在 MA20 下方，建议等待有效站上后再评估")
+
+    elif score >= 50:
+        opp_parts.append(f"综合评分 {score:.0f} 分，技术面中性偏正面")
+        if ti.tech_status == "修复":
+            opp_parts.append("处于修复阶段，若能放量突破关键均线则有望转强")
+        elif ti.tech_status == "震荡":
+            opp_parts.append("处于震荡整理阶段，建议等待明确突破信号")
+        if ti.rsi14 and 40 <= ti.rsi14 <= 60:
+            opp_parts.append("RSI 处于健康区间，不存在极端过热或过弱问题")
+
+        if ti.above_ma20:
+            opp_parts.append("当前站上 MA20，短线支撑有效，可小仓观察")
+        else:
+            opp_parts.append("但尚未站上 MA20，短期均线构成压力")
+
+    elif score >= 30:
+        opp_parts.append(f"综合评分 {score:.0f} 分，技术面偏弱")
+        if ti.tech_status == "弱势":
+            opp_parts.append("处于弱势下跌趋势，不建议逆势操作")
+        elif ti.tech_status == "破位":
+            opp_parts.append("已破位下行，短期内企稳信号不足")
+        if ti.rsi14 and ti.rsi14 < 30:
+            opp_parts.append("RSI 已进入超卖区域，虽存在技术性反弹可能，但趋势尚未扭转")
+        if ti.change_pct_20d and ti.change_pct_20d < -10:
+            opp_parts.append(f"近 20 日跌幅达 {(ti.change_pct_20d or 0):.1f}%，中期趋势偏空")
+
+    else:
+        opp_parts.append(f"综合评分 {score:.0f} 分，技术面明显弱势，建议回避为主")
+
+    modules.append("【机会判断】" + "，".join(opp_parts) + "。")
+
+    # ── 4. 【风险提示】 ──
+    risk_parts = []
+    if ti.tech_risk == "高":
+        risk_parts.append(f"当前风险等级【高】，需重点警惕")
+    elif ti.tech_risk == "中":
+        risk_parts.append(f"当前风险等级【中】，需保持适度谨慎")
+
+    if not ti.above_ma20:
+        risk_parts.append("已经跌破 MA20，短期均线构成压力")
+    if not ti.above_ma60:
+        risk_parts.append("处于 MA60 下方，中期趋势承压")
+    if ti.rsi14 and ti.rsi14 > 75:
+        risk_parts.append(f"RSI14={ti.rsi14} 已进入严重超买区域，追高风险极大")
+    if ti.volume_ratio and ti.volume_ratio > 3 and (ti.change_pct_today or 0) < 0:
+        risk_parts.append("今日出现放量下跌的异常信号，需警惕进一步调整")
+    if ti.change_pct_5d and ti.change_pct_5d < -8:
+        risk_parts.append(f"近 5 日跌幅达 {ti.change_pct_5d:.1f}%，短期抛压较重")
+    if ti.change_pct_20d and ti.change_pct_20d < -15:
+        risk_parts.append(f"近 20 日累计下跌 {(ti.change_pct_20d or 0):.1f}%，中期趋势较差")
+    if ti.high_20d and ti.low_20d and ti.current_price <= ti.low_20d * 1.05:
+        risk_parts.append("当前价格接近 20 日最低点，若继续下破则可能加速下跌")
+
+    if not risk_parts:
+        risk_parts.append("短期无明显系统风险，但需关注个股分化和大盘回调的联动影响。")
+
+    modules.append("【风险提示】" + "，".join(risk_parts) + "。")
+
+    # ── 5. 【操作建议】 ──
+    from northstar.reports.daily_decision_report import _judge_suggestion, StockPriceInfo
+    sp = StockPriceInfo(symbol=sym, company_cn=name, current_price=ti.current_price,
+                        change_pct_today=ti.change_pct_today, trend=ti.tech_status,
+                        change_pct_5d=ti.change_pct_5d, change_pct_20d=ti.change_pct_20d)
+    sugg = _judge_suggestion(sp)
+    if (ti.change_pct_today or 0) > 0 and ti.above_ma20 and ti.tech_status == "强势":
+        sugg = "买入观察"
+
+    adv_parts = []
+    adv_parts.append(f"建议：{sugg}")
+
+    if is_held:
+        adv_parts.append("【我的持仓】")
+        if sugg in ("买入观察", "继续持有"):
+            if ti.above_ma20:
+                adv_parts.append("目前处于安全区间，可继续持有，观察 MA20 支撑力度。"
+                                  f"若跌破 MA20(${ti.ma20:.2f})需考虑减仓")
+            else:
+                adv_parts.append("当前价格已跌破 MA20，持仓面临均线压力，"
+                                  f"建议观察能否在 ${ti.ma20:.2f} 附近企稳。"
+                                  "若继续走弱应考虑止损")
+        elif sugg == "暂不买入":
+            adv_parts.append("当前不适合新增仓位。已持有的仓位建议观察"
+                              f"能否重新站回 MA20(${ti.ma20:.2f})，"
+                              "若持续在均线下方运行可考虑减仓")
+        elif sugg in ("高风险回避", "减仓观察"):
+            adv_parts.append("建议控制风险，已持有的仓位可考虑逐步减仓或设置止损。"
+                              "不建议继续加仓或抄底")
+        adv_parts.append(f"重点关注：能否有效突破 ${ti.ma20:.2f}(MA20)")
+        if ti.ma60:
+            adv_parts.append(f"和 ${ti.ma60:.2f}(MA60) 两个关键价位")
+    else:
+        if sugg == "买入观察":
+            adv_parts.append("技术面偏强，可小仓观察，但不建议追高。"
+                              f"回踩 MA20(${ti.ma20:.2f})不破时是较好的介入时机")
+        elif sugg == "继续持有":
+            adv_parts.append("当前适合继续持有，不急于加仓也不急于卖出。"
+                              f"关注 MA20(${ti.ma20:.2f})支撑是否有效")
+        elif sugg == "暂不买入":
+            adv_parts.append("暂时观望为宜。等待价格站上 MA20 并确认支撑后再考虑。"
+                              "不建议在均线下方抄底")
+        elif sugg in ("高风险回避", "减仓观察"):
+            adv_parts.append("风险较高，建议回避。不要因为价格低而急于抄底，"
+                              "等待趋势反转信号明确后再做决定")
+
+    modules.append("【操作建议】" + "，".join(adv_parts))
+
+    result = "\n".join(modules)
+
+    # 确保最少 180 个中文字符
+    cn_chars = sum(1 for c in result if '\u4e00' <= c <= '\u9fff')
+    if cn_chars < 180:
+        filler = (
+            f"综合来看，{name}({sym})技术评分{ti.final_score:.0f}分，"
+            f"趋势评分{ti.trend_score:.0f}分，风险评分{ti.risk_score:.0f}分。"
+            f"建议结合大盘整体环境和个人风险承受能力做出投资决策。"
+            f"以上分析基于技术面数据，不构成投资建议。"
+        )
+        result += "\n" + filler
+
+    return result

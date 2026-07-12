@@ -42,13 +42,33 @@ def _safe_print(text: str) -> None:
 
 def main() -> int:
     """执行每日决策报告生成，返回退出码。"""
-    from northstar.reports.daily_decision_report import generate_daily_decision_report
+    from northstar.data.market_data_provider import MarketDataProvider
+    from northstar.data.market_snapshot import build_market_snapshot
+    from northstar.data.portfolio_snapshot import (
+        load_portfolio_state,
+        requested_market_symbols,
+        value_portfolio,
+    )
+    from northstar.reports.daily_decision_report import (
+        generate_daily_decision_report,
+        load_watchlist,
+    )
 
     now_str = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
     _safe_print(f"[{now_str}] 开始生成每日决策报告...")
 
     try:
-        result = generate_daily_decision_report()
+        symbols = load_watchlist()
+        portfolio_state = load_portfolio_state()
+        requested_symbols = list(requested_market_symbols(symbols, portfolio_state))
+        snapshot = build_market_snapshot(requested_symbols, MarketDataProvider())
+        portfolio_snapshot = value_portfolio(portfolio_state, snapshot)
+        result = generate_daily_decision_report(
+            snapshot=snapshot,
+            symbols=symbols,
+            portfolio_state=portfolio_state,
+            portfolio_snapshot=portfolio_snapshot,
+        )
     except Exception as exc:
         _safe_print(f"[失败] 报告生成异常: {exc}")
         traceback.print_exc()

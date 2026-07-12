@@ -24,12 +24,26 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from northstar.data.market_snapshot import (
+    MarketSnapshot,
+    QuoteSnapshot,
+    build_market_snapshot,
+)
+from northstar.data.portfolio_snapshot import (
+    FORMAL_PORTFOLIO_PATH,
+    PortfolioSnapshot,
+    PortfolioState,
+    load_portfolio_state,
+    portfolio_state_from_mapping,
+    requested_market_symbols,
+    value_portfolio,
+)
 
 # ── 目录定位 ──────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -37,39 +51,31 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # ── 常量 ───────────────────────────────────────────────────────
 WATCHLIST_PATH = PROJECT_ROOT / "watchlist.json"
-PORTFOLIO_PATH = PROJECT_ROOT / "portfolio.json"
+PORTFOLIO_PATH = FORMAL_PORTFOLIO_PATH
 REPORT_DIR = PROJECT_ROOT / "reports" / "daily_decision"
 LOG_DIR = PROJECT_ROOT / "logs"
 
 # 25支股票 → 板块分组
 SECTOR_GROUPS: dict[str, list[str]] = {
-    "AI 芯片/半导体":   ["NVDA", "AMD", "AVGO", "TSM", "ASML"],
-    "云计算/大科技":    ["MSFT", "GOOGL", "META", "AMZN", "AAPL"],
-    "AI 应用/软件":     ["PLTR", "CRWD", "PANW", "SNOW", "MDB"],
-    "高波动成长股":     ["TSLA", "ARM", "MU", "SMCI", "DELL"],
-    "加密/金融科技":    ["SOFI", "COIN", "ORCL"],
-    "量子/新兴":        ["IONQ", "RGTI"],
+    "AI算力芯片与半导体": ["NVDA", "AMD", "AVGO", "TSM", "ASML", "ARM", "MRVL", "MU", "AMAT", "LRCX"],
+    "AI云与大模型平台": ["MSFT", "GOOGL", "META", "ORCL"],
+    "AI软件、数据、网络安全与企业应用": ["PLTR", "SNOW", "MDB", "CRWD", "DDOG", "NET", "NOW"],
+    "AI数据中心、服务器、电力与基础设施": ["VRT", "ETN", "SMCI", "DELL"],
 }
+AI_WATCHLIST = [symbol for group in SECTOR_GROUPS.values() for symbol in group]
 
 # 中文名称映射（人工维护，开源数据无需 API）
 COMPANY_NAMES: dict[str, str] = {
     "NVDA": "英伟达",    "AMD": "超威半导体",  "AVGO": "博通",
     "TSM": "台积电",     "ASML": "阿斯麦",
     "MSFT": "微软",      "GOOGL": "谷歌",       "META": "Meta",
-    "AMZN": "亚马逊",    "AAPL": "苹果",
-    "PLTR": "Palantir",  "CRWD": "CrowdStrike", "PANW": "Palo Alto",
+    "MRVL": "迈威尔科技", "AMAT": "应用材料", "LRCX": "泛林集团",
+    "PLTR": "Palantir",  "CRWD": "CrowdStrike", "DDOG": "Datadog",
     "SNOW": "Snowflake", "MDB": "MongoDB",
-    "TSLA": "特斯拉",    "ARM": "ARM 控股",     "MU": "美光科技",
+    "NET": "Cloudflare", "NOW": "ServiceNow", "ARM": "ARM 控股", "MU": "美光科技",
     "SMCI": "超微电脑",  "DELL": "戴尔",
-    "SOFI": "SoFi",      "COIN": "Coinbase",    "ORCL": "甲骨文",
-    "IONQ": "IonQ",      "RGTI": "Rigetti",
+    "VRT": "维谛技术", "ETN": "伊顿", "SOFI": "SoFi", "SPCX": "SPCX", "ORCL": "甲骨文",
 }
-
-# 用户持仓（从 portfolio.json 读取，此处为后备）
-USER_POSITIONS: dict[str, str] = {
-    "NVDA": "持仓", "SOFI": "持仓", "SPCX": "持仓",
-}
-
 
 # ── 行情数据结构 ──────────────────────────────────────────────
 @dataclass
@@ -77,7 +83,7 @@ class StockPriceInfo:
     """单只股票的行情+决策信息。"""
     symbol: str
     company_cn: str = ""
-    current_price: float = 0.0
+    current_price: float | None = None
     change_pct_today: float = 0.0
     change_pct_5d: float | None = None
     change_pct_20d: float | None = None
@@ -86,7 +92,25 @@ class StockPriceInfo:
     suggestion: str = "暂不买入"   # 操作建议
     reason: str = ""           # 一句话理由
     score: float = 0.0         # 综合评分（用于排序）
-    data_source: str = "unavailable"  # yfinance / yahoo_quote / unavailable
+    data_source: str = "unavailable"
+    as_of: str | None = None
+    status: str = "missing"
+    is_stale: bool = False
+    is_mock: bool = False
+    error_code: str | None = None
+    error_message: str | None = None
+
+    @property
+    def decision_eligible(self) -> bool:
+        return (
+            self.status == "valid"
+            and self.current_price is not None
+            and self.current_price > 0
+            and bool(self.data_source)
+            and bool(self.as_of)
+            and not self.is_stale
+            and not self.is_mock
+        )
 
 
 # ── 日志 ───────────────────────────────────────────────────────
@@ -95,6 +119,8 @@ logger = logging.getLogger("daily_decision_report")
 
 def _setup_logger() -> None:
     """配置日志，输出到 logs/daily_decision_report.log。"""
+    if logger.handlers:
+        return
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = LOG_DIR / "daily_decision_report.log"
     handler = logging.FileHandler(str(log_path), encoding="utf-8", mode="a")
@@ -115,13 +141,7 @@ def load_watchlist() -> list[str]:
     """从 watchlist.json 读取观察池股票列表。"""
     if not WATCHLIST_PATH.exists():
         logger.warning("watchlist.json 不存在，使用默认 25 支股票")
-        return [
-            "NVDA", "AMD", "AVGO", "TSM", "ASML",
-            "MSFT", "GOOGL", "META", "AMZN", "AAPL",
-            "PLTR", "TSLA", "SOFI", "IONQ", "RGTI",
-            "ARM", "MU", "SMCI", "DELL", "ORCL",
-            "CRWD", "PANW", "SNOW", "MDB", "COIN",
-        ]
+        return list(AI_WATCHLIST)
     try:
         with open(WATCHLIST_PATH, encoding="utf-8") as f:
             data = json.load(f)
@@ -136,187 +156,62 @@ def load_watchlist() -> list[str]:
 
 
 def load_portfolio() -> dict[str, dict[str, Any]]:
-    """读取 portfolio.json 获得用户持仓信息。
-
-    Returns:
-        {symbol: {"shares": int, "avg_cost": float}, ...}
-    """
-    if not PORTFOLIO_PATH.exists():
-        logger.info("portfolio.json 不存在，跳过持仓读取")
-        return {}
-    try:
-        with open(PORTFOLIO_PATH, encoding="utf-8") as f:
-            data = json.load(f)
-        positions = data.get("positions", [])
-        result: dict[str, dict[str, Any]] = {}
-        for pos in positions:
-            ticker = str(pos.get("ticker", "")).strip().upper()
-            if not ticker:
-                continue
-            result[ticker] = {
-                "shares": float(pos.get("shares", 0)),
-                "avg_cost": float(pos.get("avg_cost", 0.0)),
-            }
-        return result
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        logger.warning("读取 portfolio.json 失败: %s", exc)
-        return {}
+    """Deprecated compatibility view backed by the canonical repository."""
+    state = load_portfolio_state()
+    return {
+        position.symbol: {
+            "shares": str(position.quantity),
+            "avg_cost": str(position.average_cost),
+            "currency": position.currency,
+        }
+        for position in state.positions
+    }
 
 
 # ── 获取行情 ──────────────────────────────────────────────────
+def _stock_info_from_quote(quote: QuoteSnapshot) -> StockPriceInfo:
+    """Convert one frozen quote into score input without performing I/O."""
+    info = StockPriceInfo(
+        symbol=quote.symbol,
+        company_cn=COMPANY_NAMES.get(quote.symbol, quote.symbol),
+        current_price=quote.price,
+        change_pct_today=float(quote.change_pct_today or 0.0),
+        change_pct_5d=quote.change_pct_5d,
+        change_pct_20d=quote.change_pct_20d,
+        data_source=quote.source,
+        as_of=quote.as_of,
+        status=quote.status,
+        is_stale=quote.is_stale,
+        is_mock=quote.is_mock,
+        error_code=quote.error_code,
+        error_message=quote.error_message,
+    )
+    if info.decision_eligible:
+        info.trend = _judge_trend(info)
+        info.risk_level = _judge_risk(info)
+        info.suggestion = _judge_suggestion(info)
+        info.reason = _generate_reason(info)
+        info.score = _compute_score(info)
+    else:
+        info.trend = "数据不足"
+        info.risk_level = "未知"
+        info.suggestion = "无建议"
+        info.reason = info.error_message or f"行情状态为 {info.status}，禁止参与评分"
+        info.score = 0.0
+    return info
+
+
 def fetch_prices(
     symbols: list[str],
+    *,
+    provider: Any | None = None,
 ) -> dict[str, StockPriceInfo]:
-    """通过多级数据源链获取 25 支股票行情。
+    """Compatibility wrapper: build exactly one snapshot and expose its rows."""
+    from northstar.data.market_data_provider import MarketDataProvider
 
-    数据源优先级（逐只降级）：
-    1. YFinancePriceProvider (yfinance) — get_quote + history
-    2. YahooQuoteProvider (直接 HTTP 请求 Yahoo Finance API) — 备用源
-    3. 空值占位 — 报告明确提示行情不可用
-
-    代理注入：
-    - 在第一次网络请求前注入代理环境变量 HTTP_PROXY / HTTPS_PROXY
-    - YahooQuoteProvider 使用相同的代理 session
-    """
-    import concurrent.futures
-
-    # ── Step 0: 前置注入代理环境变量 ──────────────────────────
-    from northstar.config.network import (
-        apply_proxy_environment,
-        get_connectivity_status,
-        get_working_proxy,
-    )
-    proxy = apply_proxy_environment()
-    _connectivity = get_connectivity_status()
-    _proxy = _connectivity.get("proxy_url", "直连")
-
-    # 导入数据源
-    from price_provider import YFinancePriceProvider, PriceNotFoundError
-    from northstar.data.yahoo_quote_provider import fetch_quotes as yahoo_fetch_quotes
-
-    provider = YFinancePriceProvider()
-    info_map: dict[str, StockPriceInfo] = {}
-    _priced_count = 0
-    _yfinance_failed: list[str] = []
-
-    def _fetch_single_yf(symbol: str) -> StockPriceInfo | None:
-        """尝试从 yfinance 获取单支股票。成功返回 StockPriceInfo，失败返回 None。"""
-        info = StockPriceInfo(symbol=symbol, company_cn=COMPANY_NAMES.get(symbol, symbol))
-        info.data_source = "yfinance"
-
-        # Step A: get_quote
-        try:
-            quote = provider.get_quote(symbol)
-            price = float(quote.price)
-            prev_close = float(quote.previous_close) if quote.previous_close else None
-            info.current_price = price
-            if prev_close and prev_close > 0:
-                info.change_pct_today = round((price - prev_close) / prev_close * 100, 2)
-            else:
-                info.change_pct_today = 0.0
-        except (PriceNotFoundError, Exception) as exc:
-            logger.warning("yfinance 获取 %s 失败: %s", symbol, exc)
-            info.current_price = 0.0
-            info.change_pct_today = 0.0
-
-        # Step B: history
-        try:
-            ticker_factory = provider._get_ticker_factory()
-            ticker = ticker_factory(symbol)
-            hist = ticker.history(period="1mo", interval="1d")
-            if hist is not None and not hist.empty:
-                closes = hist["Close"].dropna()
-                if len(closes) >= 2:
-                    latest = float(closes.iloc[-1])
-                    if latest > 0 and info.current_price == 0.0:
-                        info.current_price = latest
-                    if len(closes) >= 5:
-                        old_5 = float(closes.iloc[-5])
-                        info.change_pct_5d = round((latest - old_5) / old_5 * 100, 2)
-                    old_20 = float(closes.iloc[0])
-                    info.change_pct_20d = round((latest - old_20) / old_20 * 100, 2)
-        except Exception as exc:
-            logger.debug("yfinance 获取 %s 历史数据失败: %s", symbol, exc)
-
-        if info.current_price > 0:
-            info.trend = _judge_trend(info)
-            info.risk_level = _judge_risk(info)
-            info.suggestion = _judge_suggestion(info)
-            info.reason = _generate_reason(info)
-            info.score = _compute_score(info)
-            return info
-        return None
-
-    # ── 第一轮: 并行 yfinance ─────────────────────────────────
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_map = {executor.submit(_fetch_single_yf, sym): sym for sym in symbols}
-        for future in concurrent.futures.as_completed(future_map, timeout=150):
-            sym = future_map[future]
-            try:
-                info = future.result(timeout=14)
-                if info is not None and info.current_price > 0:
-                    info_map[sym] = info
-                    _priced_count += 1
-                else:
-                    _yfinance_failed.append(sym)
-            except concurrent.futures.TimeoutError:
-                logger.warning("yfinance 获取 %s 超时", sym)
-                _yfinance_failed.append(sym)
-            except Exception as exc:
-                logger.warning("yfinance 获取 %s 异常: %s", sym, exc)
-                _yfinance_failed.append(sym)
-
-    # ── 第二轮: Yahoo Quote 备用源降级 ────────────────────────
-    if _yfinance_failed:
-        logger.info("yfinance 失败 %d 支，尝试 YahooQuoteProvider 降级", len(_yfinance_failed))
-        yahoo_results = yahoo_fetch_quotes(_yfinance_failed)
-        for sym in _yfinance_failed:
-            yr = yahoo_results.get(sym, {})
-            price = yr.get("price")
-            change_pct = yr.get("change_pct")
-            err = yr.get("error")
-
-            if price is not None and price > 0:
-                info = StockPriceInfo(
-                    symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym),
-                    current_price=float(price),
-                    change_pct_today=float(change_pct) if change_pct is not None else 0.0,
-                    data_source="yahoo_quote",
-                )
-                info.trend = _judge_trend(info)
-                info.risk_level = _judge_risk(info)
-                info.suggestion = _judge_suggestion(info)
-                info.reason = _generate_reason(info)
-                info.score = _compute_score(info)
-                info_map[sym] = info
-                _priced_count += 1
-                logger.info("YahooQuoteProvider 成功获取 %s: $%.2f", sym, float(price))
-            else:
-                logger.warning("YahooQuoteProvider 也失败 %s: %s", sym, err or "未知错误")
-
-    # ── 第三轮: 仍然失败的创建空值占位 ────────────────────────
-    for sym in symbols:
-        if sym not in info_map:
-            info = StockPriceInfo(symbol=sym, company_cn=COMPANY_NAMES.get(sym, sym))
-            info.data_source = "unavailable"
-            info.trend = _judge_trend(info)
-            info.risk_level = _judge_risk(info)
-            info.suggestion = _judge_suggestion(info)
-            info.reason = _generate_reason(info)
-            info.score = _compute_score(info)
-            info_map[sym] = info
-
-    # ── 计算行情源状态 ────────────────────────────────────────
-    _pct_priced = _priced_count / max(len(symbols), 1)
-    if _pct_priced >= 0.8:
-        info_map["__market_status__"] = "正常"
-    elif _pct_priced >= 0.3:
-        info_map["__market_status__"] = "部分可用"
-    else:
-        info_map["__market_status__"] = "不可用"
-    info_map["__priced_count__"] = float(_priced_count)
-    info_map["__proxy_url__"] = _proxy
-
+    snapshot = build_market_snapshot(symbols, provider or MarketDataProvider())
+    info_map = {symbol: _stock_info_from_quote(snapshot.quote(symbol)) for symbol in snapshot.requested_symbols}
+    info_map["__snapshot__"] = snapshot  # type: ignore[assignment]
     return info_map
 
 
@@ -423,7 +318,7 @@ def _generate_reason(info: StockPriceInfo) -> str:
 
 
 def _compute_score(info: StockPriceInfo) -> float:
-    """综合评分，用于排序 Top 5。"""
+    """兼容 Markdown 报告的做多可操作分（0-100）。"""
     score = 0.0
     # 趋势加分
     if info.trend == "强势":
@@ -440,178 +335,278 @@ def _compute_score(info: StockPriceInfo) -> float:
     # 近 5 日涨跌贡献
     if info.change_pct_5d is not None:
         score += max(-20, min(20, info.change_pct_5d * 0.5))
-    return round(score, 1)
+    return round(max(0, min(100, score + 35)), 1)
 
 
 # ── 报告生成 ──────────────────────────────────────────────────
+def _snapshot_from_info_map(info_map: dict[str, StockPriceInfo]) -> MarketSnapshot:
+    """Build a no-I/O snapshot from explicitly attributed rows (mainly tests)."""
+    now = datetime.now(timezone.utc)
+    quotes: dict[str, QuoteSnapshot] = {}
+    symbols = [symbol for symbol in info_map if not symbol.startswith("__")]
+    for symbol in symbols:
+        info = info_map[symbol]
+        status = "valid" if info.decision_eligible else info.status
+        if status == "valid" and (info.current_price is None or info.current_price <= 0):
+            status = "missing"
+        quotes[symbol] = QuoteSnapshot(
+            symbol=symbol,
+            price=info.current_price if info.current_price and info.current_price > 0 else None,
+            currency="USD",
+            source=info.data_source,
+            as_of=info.as_of,
+            status=status,
+            is_stale=info.is_stale,
+            is_mock=info.is_mock,
+            error_code=info.error_code,
+            error_message=info.error_message,
+            change_pct_today=info.change_pct_today,
+            change_pct_5d=info.change_pct_5d,
+            change_pct_20d=info.change_pct_20d,
+        )
+    valid = tuple(symbol for symbol, quote in quotes.items() if quote.decision_eligible)
+    invalid = tuple(symbol for symbol in symbols if symbol not in set(valid))
+    coverage = len(valid) / len(symbols) if symbols else 0.0
+    return MarketSnapshot(
+        snapshot_id=f"local_{now.strftime('%Y%m%dT%H%M%S%fZ')}",
+        generated_at_utc=now.isoformat().replace("+00:00", "Z"),
+        generated_at_local=now.astimezone().isoformat(),
+        market_status="NORMAL" if coverage >= 0.9 else "DEGRADED" if valid else "UNAVAILABLE",
+        requested_symbols=tuple(symbols),
+        valid_symbols=valid,
+        invalid_symbols=invalid,
+        coverage_ratio=coverage,
+        provider_summary={},
+        quotes=quotes,
+    )
+
+
+def _stock_dict(info: StockPriceInfo) -> dict[str, Any]:
+    return {
+        "symbol": info.symbol,
+        "company_cn": info.company_cn,
+        "current_price": info.current_price,
+        "change_pct_today": info.change_pct_today if info.decision_eligible else None,
+        "change_pct_5d": info.change_pct_5d,
+        "change_pct_20d": info.change_pct_20d,
+        "trend": info.trend,
+        "risk_level": info.risk_level,
+        "suggestion": info.suggestion,
+        "reason": info.reason,
+        "score": info.score if info.decision_eligible else None,
+        "source": info.data_source,
+        "as_of": info.as_of,
+        "status": info.status,
+        "is_stale": info.is_stale,
+        "is_mock": info.is_mock,
+        "error_code": info.error_code,
+        "error_message": info.error_message,
+        "error": info.error_message,
+    }
+
+
 def build_report_data(
     info_map: dict[str, StockPriceInfo],
     portfolio: dict[str, dict[str, Any]] | None = None,
+    *,
+    snapshot: MarketSnapshot | None = None,
+    requested_symbols: list[str] | tuple[str, ...] | None = None,
+    portfolio_state: PortfolioState | None = None,
+    portfolio_snapshot: PortfolioSnapshot | None = None,
 ) -> dict[str, Any]:
-    """构建完整的每日决策报告数据字典。"""
-    # 提取行情源状态元数据（以 __ 开头的键）
-    _market_status = info_map.pop("__market_status__", "不可用") if isinstance(info_map, dict) else "不可用"
-    _priced_count = info_map.pop("__priced_count__", 0.0) if isinstance(info_map, dict) else 0.0
-    _proxy_url = info_map.pop("__proxy_url__", "直连") if isinstance(info_map, dict) else "直连"
+    """Build report data exclusively from one already-frozen snapshot."""
+    embedded = info_map.get("__snapshot__")
+    if snapshot is None and isinstance(embedded, MarketSnapshot):
+        snapshot = embedded
+    clean_map = {key: value for key, value in info_map.items() if not key.startswith("__")}
+    snapshot = snapshot or _snapshot_from_info_map(clean_map)
+    symbols = list(dict.fromkeys(requested_symbols or clean_map.keys()))
+    now_local = datetime.fromisoformat(snapshot.generated_at_local.replace("Z", "+00:00"))
+    date_str = now_local.strftime("%Y-%m-%d")
+    time_str = now_local.strftime("%H:%M:%S")
 
-    symbols = list(info_map.keys())
-    now_utc = datetime.now(timezone.utc)
-    now_beijing = now_utc.astimezone()  # 系统时区
-    date_str = now_beijing.strftime("%Y-%m-%d")
-    time_str = now_beijing.strftime("%H:%M:%S")
-    total = len(symbols)
-    priced = int(_priced_count)
+    for symbol in symbols:
+        if symbol not in clean_map:
+            quote = snapshot.quotes.get(symbol)
+            if quote is not None:
+                clean_map[symbol] = _stock_info_from_quote(quote)
+            else:
+                clean_map[symbol] = StockPriceInfo(
+                    symbol=symbol,
+                    company_cn=COMPANY_NAMES.get(symbol, symbol),
+                    status="missing",
+                    error_code="SNAPSHOT_SYMBOL_MISSING",
+                    error_message="symbol not present in supplied snapshot",
+                    reason="快照缺少该股票，禁止参与评分",
+                    suggestion="无建议",
+                    trend="数据不足",
+                    risk_level="未知",
+                )
 
-    # 行情源状态中文
-    market_status_cn = _market_status if _market_status in ("正常", "部分可用", "不可用") else "不可用"
-    market_status_icon = {"正常": "✅", "部分可用": "⚠️", "不可用": "🔴"}.get(market_status_cn, "❓")
+    stock_details = {symbol: clean_map[symbol] for symbol in symbols}
+    eligible = [info for info in stock_details.values() if info.decision_eligible]
+    coverage = len(eligible) / len(symbols) if symbols else 0.0
+    if coverage < 0.9:
+        recommendation_status = "DATA_INSUFFICIENT"
+    elif len(eligible) < 5:
+        recommendation_status = "NO_RECOMMENDATION"
+    else:
+        recommendation_status = "OK"
 
-    # 构建数据异常提示
-    data_warning = ""
-    if priced < total * 0.3 or market_status_cn == "不可用":
-        data_warning = "⚠ 当前报告只适合观察系统结构，不适合作为交易判断依据 — 行情源不可用，大部分价格为默认值"
-
-    # 1. 今日总览
-    overview = {
-        "当前日期": date_str,
-        "观察池股票数量": total,
-        "成功获取价格数量": f"{priced}/{total}",
-        "行情源状态": f"{market_status_icon} {market_status_cn}",
-        "当前使用代理": _proxy_url,
-        "数据更新时间": f"{date_str} {time_str}",
-        "系统运行状态": "本地正常运行（未接入券商）",
-    }
-
-    # 2. 按板块分组
     sector_stocks: dict[str, list[StockPriceInfo]] = {}
     for sector, sector_symbols in SECTOR_GROUPS.items():
-        matched = [info_map[s] for s in sector_symbols if s in info_map]
+        matched = [stock_details[symbol] for symbol in sector_symbols if symbol in stock_details]
         if matched:
             sector_stocks[sector] = matched
-    # 未分组的归入"其他"
-    grouped_symbols = {s for ss in SECTOR_GROUPS.values() for s in ss}
-    others = [v for k, v in info_map.items() if k not in grouped_symbols]
+    grouped_symbols = {symbol for values in SECTOR_GROUPS.values() for symbol in values}
+    others = [info for symbol, info in stock_details.items() if symbol not in grouped_symbols]
     if others:
         sector_stocks["其他"] = others
 
-    # 3. 每只股票的简明判断（StockPriceInfo 已包含）
-    stock_details = {s: info_map[s] for s in symbols}
+    top5_opportunity: list[StockPriceInfo] = []
+    top5_risk: list[StockPriceInfo] = []
+    if recommendation_status == "OK":
+        opportunity = [
+            info for info in eligible
+            if info.suggestion not in ("高风险回避", "减仓观察") and info.score > 0
+        ]
+        opportunity.sort(key=lambda item: -item.score)
+        top5_opportunity = opportunity[:5] if len(opportunity) >= 5 else []
+        risk = [info for info in eligible if info.risk_level == "高" or info.trend == "弱势"]
+        risk.sort(key=lambda item: item.score)
+        top5_risk = risk[:5]
 
-    # 4. Top 5 机会（评分最高，且建议不是"高风险回避"）
-    candidates_opportunity = [
-        v for v in info_map.values()
-        if v.suggestion not in ("高风险回避", "减仓观察") and v.score > 0
-    ]
-    candidates_opportunity.sort(key=lambda x: -x.score)
-    top5_opportunity = candidates_opportunity[:5]
+    if portfolio_snapshot is None:
+        if portfolio_state is None:
+            portfolio_state = portfolio_state_from_mapping(
+                portfolio or {},
+                cash=None,
+                updated_at=snapshot.generated_at_utc,
+            )
+        portfolio_snapshot = value_portfolio(portfolio_state, snapshot)
+    if portfolio_snapshot.market_snapshot_id != snapshot.snapshot_id:
+        raise ValueError("PortfolioSnapshot and MarketSnapshot IDs do not match")
 
-    # 5. Top 5 风险（评分最低，或高风险等级）
-    candidates_risk = [
-        v for v in info_map.values()
-        if v.risk_level == "高" or v.trend == "弱势"
-    ]
-    candidates_risk.sort(key=lambda x: x.score)
-    top5_risk = candidates_risk[:5]
-    # 如果不足 5 个，补排序最低的
-    if len(top5_risk) < 5:
-        all_sorted = sorted(info_map.values(), key=lambda x: x.score)
-        for v in all_sorted:
-            if v not in top5_risk and len(top5_risk) < 5:
-                top5_risk.append(v)
+    holding_symbols = [position.symbol for position in portfolio_snapshot.positions]
+    missing_holdings = list(portfolio_snapshot.missing_symbols)
+    valuation_status = portfolio_snapshot.valuation_status
+    valuation_positions = [position.to_dict() for position in portfolio_snapshot.positions]
 
-    # 6. 持仓特别提示
     portfolio_notes: list[dict[str, Any]] = []
-    if portfolio:
-        for sym in portfolio:
-            if sym in info_map:
-                pinfo = info_map[sym]
-                pos = portfolio[sym]
-                portfolio_notes.append({
-                    "symbol": sym,
-                    "company_cn": COMPANY_NAMES.get(sym, sym),
-                    "持股数量": pos.get("shares", 0),
-                    "平均成本": pos.get("avg_cost", 0.0),
-                    "当前价格": pinfo.current_price,
-                    "今日涨跌幅": pinfo.change_pct_today,
-                    "趋势": pinfo.trend,
-                    "风险": pinfo.risk_level,
-                    "建议": pinfo.suggestion,
-                    "理由": pinfo.reason,
-                })
+    valuations_by_symbol = {position.symbol: position for position in portfolio_snapshot.positions}
+    for symbol in holding_symbols:
+        info = clean_map.get(symbol)
+        valuation = valuations_by_symbol[symbol]
+        if info is None or not info.decision_eligible or valuation.valuation_status != "complete":
+            continue
+        portfolio_notes.append({
+            "symbol": symbol,
+            "company_cn": COMPANY_NAMES.get(symbol, symbol),
+            "持股数量": str(valuation.quantity),
+            "平均成本": str(valuation.average_cost),
+            "当前价格": str(valuation.current_price),
+            "今日涨跌幅": info.change_pct_today,
+            "趋势": info.trend,
+            "风险": info.risk_level,
+            "建议": info.suggestion,
+            "理由": info.reason,
+            "source": info.data_source,
+            "as_of": info.as_of,
+            "snapshot_id": snapshot.snapshot_id,
+        })
 
-    # 7. 今日一句话结论
-    overall_conclusion = _make_overall_conclusion(info_map)
+    invalid_rows = [
+        {
+            "symbol": symbol,
+            "status": stock_details[symbol].status,
+            "source": stock_details[symbol].data_source,
+            "as_of": stock_details[symbol].as_of,
+            "is_stale": stock_details[symbol].is_stale,
+            "is_mock": stock_details[symbol].is_mock,
+            "error_code": stock_details[symbol].error_code,
+            "error_message": stock_details[symbol].error_message,
+        }
+        for symbol in symbols if not stock_details[symbol].decision_eligible
+    ]
+    issue_counts = {
+        status: sum(1 for row in invalid_rows if row["status"] == status)
+        for status in ("stale", "missing", "error", "mock")
+    }
+    if recommendation_status == "OK":
+        overall_conclusion = _make_overall_conclusion({info.symbol: info for info in eligible})
+        data_warning = ""
+    else:
+        overall_conclusion = "数据不足，今日不生成正式投资建议"
+        data_warning = "行情覆盖率或有效候选数量未达到门槛，Top 5 已关闭。"
 
+    overview = {
+        "当前日期": date_str,
+        "观察池股票数量": len(symbols),
+        "有效价格数量": f"{len(eligible)}/{len(symbols)}",
+        "有效覆盖率": f"{coverage:.1%}",
+        "行情源状态": snapshot.market_status,
+        "快照编号": snapshot.snapshot_id,
+        "行情生成时间": snapshot.generated_at_local,
+        "推荐状态": recommendation_status,
+        "持仓估值状态": valuation_status,
+        "持仓行情覆盖率": f"{portfolio_snapshot.coverage_ratio:.1%}",
+        "持仓快照编号": portfolio_snapshot.portfolio_snapshot_id,
+    }
     return {
         "report_date": date_str,
         "report_time": time_str,
+        "generated_at": snapshot.generated_at_utc,
+        "snapshot_id": snapshot.snapshot_id,
+        "portfolio_snapshot_id": portfolio_snapshot.portfolio_snapshot_id,
+        "market_snapshot_id": portfolio_snapshot.market_snapshot_id,
+        "market_status": snapshot.market_status,
+        "coverage_ratio": round(coverage, 6),
+        "recommendation_status": recommendation_status,
+        "provider_summary": dict(snapshot.provider_summary),
+        "market_snapshot": snapshot.to_dict(),
+        "watchlist_symbols": symbols,
+        "portfolio_symbols": holding_symbols,
+        "requested_symbols": list(snapshot.requested_symbols),
+        "data_quality": {
+            "status": recommendation_status,
+            "coverage_ratio": round(coverage, 6),
+            "valid_count": len(eligible),
+            "requested_count": len(symbols),
+            "invalid_count": len(invalid_rows),
+            "issue_counts": issue_counts,
+            "invalid_symbols": invalid_rows,
+            "warning": data_warning,
+        },
         "overview": overview,
-        "sector_stocks": {
-            sec: [
-                {
-                    "symbol": s.symbol,
-                    "company_cn": s.company_cn,
-                    "current_price": s.current_price,
-                    "change_pct_today": s.change_pct_today,
-                    "change_pct_5d": s.change_pct_5d,
-                    "change_pct_20d": s.change_pct_20d,
-                    "trend": s.trend,
-                    "risk_level": s.risk_level,
-                    "suggestion": s.suggestion,
-                    "reason": s.reason,
-                    "score": s.score,
-                }
-                for s in stocks
-            ]
-            for sec, stocks in sector_stocks.items()
-        },
-        "stock_details": {
-            sym: {
-                "company_cn": info.company_cn,
-                "current_price": info.current_price,
-                "change_pct_today": info.change_pct_today,
-                "change_pct_5d": info.change_pct_5d,
-                "change_pct_20d": info.change_pct_20d,
-                "trend": info.trend,
-                "risk_level": info.risk_level,
-                "suggestion": info.suggestion,
-                "reason": info.reason,
-                "score": info.score,
-            }
-            for sym, info in stock_details.items()
-        },
+        "sector_stocks": {sector: [_stock_dict(info) for info in values] for sector, values in sector_stocks.items()},
+        "stock_details": {symbol: _stock_dict(info) for symbol, info in stock_details.items()},
         "top5_opportunity": [
-            {
-                "symbol": s.symbol,
-                "company_cn": s.company_cn,
-                "score": s.score,
-                "current_price": s.current_price,
-                "change_pct_today": s.change_pct_today,
-                "trend": s.trend,
-                "suggestion": s.suggestion,
-                "reason": s.reason,
-                "why": _why_opportunity(s),
-            }
-            for s in top5_opportunity
+            {**_stock_dict(info), "why": _why_opportunity(info), "snapshot_id": snapshot.snapshot_id}
+            for info in top5_opportunity
         ],
         "top5_risk": [
-            {
-                "symbol": s.symbol,
-                "company_cn": s.company_cn,
-                "score": s.score,
-                "current_price": s.current_price,
-                "change_pct_today": s.change_pct_today,
-                "trend": s.trend,
-                "risk_level": s.risk_level,
-                "suggestion": s.suggestion,
-                "reason": s.reason,
-                "why": _why_risk(s),
-            }
-            for s in top5_risk
+            {**_stock_dict(info), "why": _why_risk(info), "snapshot_id": snapshot.snapshot_id}
+            for info in top5_risk
         ],
         "portfolio_notes": portfolio_notes,
+        "portfolio_snapshot": portfolio_snapshot.to_dict(),
+        "portfolio_valuation": {
+            **portfolio_snapshot.to_dict(),
+            "snapshot_id": snapshot.snapshot_id,
+            "holding_coverage_ratio": portfolio_snapshot.coverage_ratio,
+        },
+        "valuation_status": valuation_status,
+        "portfolio_coverage_ratio": portfolio_snapshot.coverage_ratio,
+        "missing_symbols": missing_holdings,
+        "cash": str(portfolio_snapshot.cash) if portfolio_snapshot.cash is not None else None,
+        "base_currency": portfolio_snapshot.base_currency,
+        "position_valuations": valuation_positions,
+        "total_market_value": str(portfolio_snapshot.total_market_value) if portfolio_snapshot.total_market_value is not None else None,
+        "total_cost_basis": str(portfolio_snapshot.total_cost_basis) if portfolio_snapshot.total_cost_basis is not None else None,
+        "total_unrealized_pnl": str(portfolio_snapshot.total_unrealized_pnl) if portfolio_snapshot.total_unrealized_pnl is not None else None,
+        "total_asset_value": str(portfolio_snapshot.total_asset_value) if portfolio_snapshot.total_asset_value is not None else None,
         "overall_conclusion": overall_conclusion,
-        "user_positions": list(portfolio.keys()) if portfolio else [],
+        "user_positions": holding_symbols,
     }
 
 
@@ -623,7 +618,7 @@ def _why_opportunity(info: StockPriceInfo) -> str:
         return f"今日放量上涨 {info.change_pct_today:+.1f}%，短线动能强"
     if info.change_pct_5d is not None and info.change_pct_5d > 5:
         return f"近 5 日累计上涨 {info.change_pct_5d:+.1f}%，中期趋势向好"
-    score_detail = f"综合评分 {info.score} 分"
+    score_detail = f"做多可操作分 {info.score} 分"
     if info.risk_level == "低":
         return f"风险较低，{score_detail}，适合关注"
     return f"{score_detail}，趋势偏强，但需注意仓位控制"
@@ -712,6 +707,28 @@ def _build_markdown(data: dict[str, Any]) -> str:
         lines.append(f"- **{key}**: {val}")
     lines.append("")
 
+    quality = data.get("data_quality", {})
+    lines.append("## 🛡️ 行情数据质量")
+    lines.append("")
+    lines.append(f"- **snapshot_id**: `{data.get('snapshot_id', '—')}`")
+    lines.append(f"- **行情生成时间**: {data.get('generated_at', '—')}")
+    lines.append(f"- **有效覆盖率**: {float(data.get('coverage_ratio', 0)):.1%}")
+    lines.append(f"- **报告状态**: **{data.get('recommendation_status', 'DATA_INSUFFICIENT')}**")
+    lines.append(f"- **数据源汇总**: {data.get('provider_summary', {})}")
+    if quality.get("warning"):
+        lines.append(f"- ⚠️ **警告**: {quality['warning']}")
+    invalid = quality.get("invalid_symbols", [])
+    if invalid:
+        lines.append("")
+        lines.append("| 无效标的 | 状态 | 来源 | as_of | 原因 |")
+        lines.append("|---|---|---|---|---|")
+        for item in invalid:
+            lines.append(
+                f"| {item.get('symbol')} | {item.get('status')} | {item.get('source')} "
+                f"| {item.get('as_of') or '—'} | {item.get('error_code') or item.get('error_message') or '—'} |"
+            )
+    lines.append("")
+
     # ── 2. 市场分组 ──
     lines.append("## 📂 市场分组")
     lines.append("")
@@ -734,9 +751,12 @@ def _build_markdown(data: dict[str, Any]) -> str:
     # ── 3. Top 5 机会 ──
     lines.append("## 🟢 Top 5 机会")
     lines.append("")
+    if not data["top5_opportunity"]:
+        lines.append(f"**{data.get('recommendation_status', 'NO_RECOMMENDATION')}：数据质量未达门槛，不生成正式 Top 5。**")
+        lines.append("")
     for i, s in enumerate(data["top5_opportunity"], 1):
         price_str = f"${s['current_price']:.2f}" if s["current_price"] else "—"
-        lines.append(f"**{i}. {s['symbol']} ({s['company_cn']})** — {price_str} | 今日 {s['change_pct_today']:+.1f}% | 评分 {s['score']}")
+        lines.append(f"**{i}. {s['symbol']} ({s['company_cn']})** — {price_str} | 今日 {s['change_pct_today']:+.1f}% | 做多可操作分 {s['score']}")
         lines.append(f"   - 建议: **{s['suggestion']}**")
         lines.append(f"   - 理由: {s['reason']}")
         lines.append(f"   - 关注原因: {s['why']}")
@@ -745,6 +765,9 @@ def _build_markdown(data: dict[str, Any]) -> str:
     # ── 4. Top 5 风险 ──
     lines.append("## 🔴 Top 5 风险")
     lines.append("")
+    if not data["top5_risk"]:
+        lines.append("当前不生成伪装完整的 Top 5 风险列表。")
+        lines.append("")
     for i, s in enumerate(data["top5_risk"], 1):
         price_str = f"${s['current_price']:.2f}" if s["current_price"] else "—"
         lines.append(f"**{i}. {s['symbol']} ({s['company_cn']})** — {price_str} | 今日 {s['change_pct_today']:+.1f}% | 风险 {s['risk_level']}")
@@ -755,12 +778,51 @@ def _build_markdown(data: dict[str, Any]) -> str:
 
     # ── 5. 持仓特别提示 ──
     portfolio_notes = data.get("portfolio_notes", [])
+    valuation = data.get("portfolio_valuation", {})
+    lines.append("## 💼 持仓估值质量")
+    lines.append("")
+    lines.append(f"- **portfolio_snapshot_id**: `{valuation.get('portfolio_snapshot_id', '—')}`")
+    lines.append(f"- **market_snapshot_id**: `{valuation.get('market_snapshot_id', '—')}`")
+    lines.append(f"- **估值时间**: {valuation.get('generated_at', '—')}")
+    lines.append(f"- **估值状态**: {valuation.get('valuation_status', 'incomplete')}")
+    lines.append(f"- **持仓覆盖率**: {float(valuation.get('holding_coverage_ratio', 0)):.1%}")
+    if valuation.get("missing_symbols"):
+        lines.append(f"- **缺失标的**: {', '.join(valuation['missing_symbols'])}")
+        lines.append("- 总市值、总盈亏和总资产已关闭，避免展示伪精确结果。")
+    lines.append("")
+    lines.append("| 股票 | 数量 | 成本价 | 当前价 | 行情来源 | 行情时间 | 市值 | 未实现盈亏 | 收益率 | 状态 |")
+    lines.append("|------|-----:|------:|------:|---------|---------|-----:|-----------:|------:|------|")
+    for position in valuation.get("positions", []):
+        def money(field: str) -> str:
+            value = position.get(field)
+            return f"${float(value):,.2f}" if value is not None else "—"
+        pct_value = position.get("unrealized_pnl_percent")
+        pct = f"{float(pct_value):+.2f}%" if pct_value is not None else "—"
+        lines.append(
+            f"| {position.get('symbol', '—')} | {position.get('quantity', '—')} "
+            f"| {money('average_cost')} | {money('current_price')} "
+            f"| {position.get('price_source') or '—'} | {position.get('price_as_of') or '—'} "
+            f"| {money('market_value')} | {money('unrealized_pnl')} | {pct} "
+            f"| {position.get('valuation_status', '—')} |"
+        )
+    lines.append("")
+    if valuation.get("valuation_status") in {"complete", "no_positions"}:
+        lines.append(f"- **现金**: ${float(valuation['cash']):,.2f} {valuation.get('cash_currency', '')}")
+        lines.append(f"- **持仓总市值**: ${float(valuation['total_market_value']):,.2f}")
+        lines.append(f"- **持仓总成本**: ${float(valuation['total_cost_basis']):,.2f}")
+        lines.append(f"- **总未实现盈亏**: ${float(valuation['total_unrealized_pnl']):,.2f}")
+        lines.append(f"- **总资产**: ${float(valuation['total_asset_value']):,.2f}")
+    else:
+        lines.append("- **可信总资产/总盈亏**: 不可用（估值不完整）")
+        if valuation.get("partial_market_value") is not None:
+            lines.append(f"- **部分已定价市值（非总值）**: ${float(valuation['partial_market_value']):,.2f}")
+    lines.append("")
     if portfolio_notes:
         lines.append("## 📌 我的持仓特别提示")
         lines.append("")
         for p in portfolio_notes:
-            lines.append(f"**{p['symbol']} ({p['company_cn']})** — 持股 {p['持股数量']} 股，均价 ${p['平均成本']:.2f}")
-            lines.append(f"   - 当前价格: ${p['当前价格']:.2f}" if p['当前价格'] else "   - 当前价格: —")
+            lines.append(f"**{p['symbol']} ({p['company_cn']})** — 持股 {p['持股数量']} 股，均价 ${float(p['平均成本']):.2f}")
+            lines.append(f"   - 当前价格: ${float(p['当前价格']):.2f}" if p['当前价格'] else "   - 当前价格: —")
             lines.append(f"   - 今日涨跌: {p['今日涨跌幅']:+.1f}%")
             lines.append(f"   - 趋势: {p['趋势']} | 风险: {p['风险']} | 建议: **{p['建议']}**")
             lines.append(f"   - {p['理由']}")
@@ -782,58 +844,110 @@ def _build_markdown(data: dict[str, Any]) -> str:
 # ── 主入口 ──────────────────────────────────────────────────
 def generate_daily_decision_report(
     report_dir: str | Path | None = None,
+    *,
+    snapshot: MarketSnapshot | None = None,
+    symbols: list[str] | None = None,
+    portfolio: dict[str, dict[str, Any]] | None = None,
+    portfolio_state: PortfolioState | None = None,
+    portfolio_snapshot: PortfolioSnapshot | None = None,
+    provider: Any | None = None,
+    save: bool = True,
 ) -> dict[str, Any]:
     """生成每日决策报告的主流程。
 
     Args:
         report_dir: 报告输出目录，默认 reports/daily_decision/
+        snapshot: 已冻结的唯一行情快照；传入后绝不再次访问 provider
 
     Returns:
         报告数据字典
     """
-    _setup_logger()
+    if save and report_dir is None:
+        _setup_logger()
     logger.info("=" * 60)
     logger.info("开始生成每日决策报告")
 
     # 1. 读取观察池
-    symbols = load_watchlist()
+    symbols = list(symbols) if symbols is not None else load_watchlist()
     logger.info("观察池股票数量: %d", len(symbols))
     if not symbols:
         logger.error("观察池为空，无法生成报告")
         return {"error": "观察池为空"}
 
-    # 2. 读取持仓
-    portfolio = load_portfolio()
-    logger.info("读取到持仓股票: %s", list(portfolio.keys()) if portfolio else "无")
+    # 2. 只通过统一 Repository 读取原始持仓；兼容 mapping 不得虚构现金。
+    if portfolio_state is None and portfolio_snapshot is None:
+        portfolio_state = (
+            portfolio_state_from_mapping(
+                portfolio,
+                cash=None,
+                updated_at=datetime.now(timezone.utc).isoformat(),
+            )
+            if portfolio is not None
+            else load_portfolio_state()
+        )
+    portfolio_symbols = (
+        list(portfolio_state.position_symbols)
+        if portfolio_state is not None
+        else [position.symbol for position in portfolio_snapshot.positions]
+    )
+    logger.info("统一持仓来源股票: %s", portfolio_symbols or "无")
 
-    # 3. 获取行情
-    info_map = fetch_prices(symbols)
-    # 只统计真正的股票（跳过 __ 开头的元数据键）
-    priced_count = sum(
-        1 for k, v in info_map.items()
-        if not k.startswith("__") and isinstance(v, StockPriceInfo) and v.current_price > 0
-    )
-    real_stock_count = sum(
-        1 for k in info_map if not k.startswith("__")
-    )
-    logger.info("成功获取 %d/%d 支股票行情", priced_count, real_stock_count)
+    # 3. 正式入口只创建一次快照；传入快照时严禁再次获取行情。
+    if snapshot is None:
+        from northstar.data.market_data_provider import MarketDataProvider
+
+        requested = (
+            list(requested_market_symbols(symbols, portfolio_state))
+            if portfolio_state is not None
+            else list(dict.fromkeys(symbols + portfolio_symbols))
+        )
+        snapshot = build_market_snapshot(requested, provider or MarketDataProvider())
+    if portfolio_snapshot is None:
+        if portfolio_state is None:
+            raise ValueError("portfolio_state is required to create PortfolioSnapshot")
+        portfolio_snapshot = value_portfolio(portfolio_state, snapshot)
+    if portfolio_snapshot.market_snapshot_id != snapshot.snapshot_id:
+        raise ValueError("PortfolioSnapshot and MarketSnapshot IDs do not match")
+    info_map = {
+        symbol: _stock_info_from_quote(snapshot.quote(symbol))
+        for symbol in snapshot.requested_symbols
+    }
+    logger.info("快照 %s 有效行情 %d/%d", snapshot.snapshot_id, len(snapshot.valid_symbols), len(snapshot.requested_symbols))
 
     # 4. 构建报告数据
-    report_data = build_report_data(info_map, portfolio)
+    report_data = build_report_data(
+        info_map,
+        snapshot=snapshot,
+        requested_symbols=symbols,
+        portfolio_state=portfolio_state,
+        portfolio_snapshot=portfolio_snapshot,
+    )
     logger.info("报告数据构建完成")
 
-    # 5. 保存文件
-    md_path, json_path = save_report(report_data, report_dir)
-    report_data["_md_path"] = str(md_path)
-    report_data["_json_path"] = str(json_path)
-
-    logger.info("报告生成完成: %s", md_path)
+    # 5. 保存文件（测试可 save=False；UI 永不调用本函数）
+    if save:
+        md_path, json_path = save_report(report_data, report_dir)
+        report_data["_md_path"] = str(md_path)
+        report_data["_json_path"] = str(json_path)
+        logger.info("报告生成完成: %s", md_path)
     logger.info("=" * 60)
     return report_data
 
 
 if __name__ == "__main__":
-    result = generate_daily_decision_report()
+    from northstar.data.market_data_provider import MarketDataProvider
+
+    _symbols = load_watchlist()
+    _portfolio_state = load_portfolio_state()
+    _requested = list(requested_market_symbols(_symbols, _portfolio_state))
+    _snapshot = build_market_snapshot(_requested, MarketDataProvider())
+    _portfolio_snapshot = value_portfolio(_portfolio_state, _snapshot)
+    result = generate_daily_decision_report(
+        snapshot=_snapshot,
+        symbols=_symbols,
+        portfolio_state=_portfolio_state,
+        portfolio_snapshot=_portfolio_snapshot,
+    )
     if "error" in result:
         print(f"❌ 报告生成失败: {result['error']}")
         sys.exit(1)
