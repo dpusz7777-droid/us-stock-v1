@@ -1,116 +1,130 @@
 # -*- coding: utf-8 -*-
-"""Tests for the Northstar v52 market data layer."""
+"""Strict market-provider tests: failures never become invented prices."""
 
 from __future__ import annotations
 
-import json
-from unittest.mock import patch
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
 from northstar.data.market_data_provider import MarketDataProvider
 
 
+NOW = datetime(2026, 7, 10, 12, 0, tzinfo=timezone.utc)
+
+
 class FakeTicker:
     def __init__(self, symbol: str):
         self.symbol = symbol
 
-    def history(self, period: str) -> pd.DataFrame:
-        if period == "1d":
-            return pd.DataFrame({"Close": [189.2]})
-        if self.symbol == "SPY":
-            return pd.DataFrame({"Close": [100.0, 100.5, 101.0, 101.5, 102.0]})
-        return pd.DataFrame({"Close": [100.0 + index for index in range(30)]})
+    def history(self, period: str, interval: str = "1d") -> pd.DataFrame:
+        count = 5 if period == "5d" else 30
+        index = pd.date_range(end=NOW, periods=count, freq="D", tz="UTC")
+        values = [100.0 + item for item in range(count)]
+        return pd.DataFrame({"Close": values}, index=index)
 
 
 class FailingTicker:
-    def history(self, period: str) -> pd.DataFrame:
+    def history(self, period: str, interval: str = "1d") -> pd.DataFrame:
         raise RuntimeError("network unavailable")
 
 
-def make_provider(tmp_path) -> MarketDataProvider:
-    provider = MarketDataProvider()
-    provider.cache_file = str(tmp_path / "price_cache.json")
-    provider.cache = {}
-    return provider
-
-
-def test_get_price_returns_float(tmp_path) -> None:
-    provider = make_provider(tmp_path)
-
-    with patch("northstar.data.market_data_provider.yf.Ticker", FakeTicker):
-        quote = provider.get_price("aapl")
-
-    assert quote["symbol"] == "AAPL"
-    assert quote["price"] == 189.2
-    assert isinstance(quote["price"], float)
-    assert quote["source"] == "yfinance"
-
-
-def test_get_batch_prices_works(tmp_path) -> None:
-    provider = make_provider(tmp_path)
-
-    with patch("northstar.data.market_data_provider.yf.Ticker", FakeTicker):
-        prices = provider.get_batch_prices(["AAPL", "NVDA"])
-
-    assert prices == {"AAPL": 189.2, "NVDA": 189.2}
-
-
-def test_cache_fallback_works(tmp_path) -> None:
-    provider = make_provider(tmp_path)
-    provider.cache = {
-        "AAPL": {"price": 175.5, "timestamp": "2026-07-05T00:00:00+00:00"}
+def make_provider(tmp_path, **overrides) -> MarketDataProvider:
+    defaults = {
+        "cache_file": tmp_path / "price_cache.json",
+        "ticker_factory": FakeTicker,
+        "fallback_fetcher": lambda symbols: {},
+        "persist_cache": True,
+        "clock": lambda: NOW,
     }
+    defaults.update(overrides)
+    return MarketDataProvider(**defaults)
 
-    with patch(
-        "northstar.data.market_data_provider.yf.Ticker",
-        return_value=FailingTicker(),
-    ):
-        quote = provider.get_price("AAPL")
 
+def test_real_quote_has_required_provenance(tmp_path) -> None:
+    quote = make_provider(tmp_path).get_price("aapl")
+    assert quote["symbol"] == "AAPL"
+    assert quote["price"] == 129.0
+    assert quote["source"] == "yfinance"
+    assert quote["status"] == "valid"
+    assert quote["as_of"]
+    assert quote["is_mock"] is False
+
+
+def test_batch_returns_attributed_quotes(tmp_path) -> None:
+    quotes = make_provider(tmp_path).get_batch_prices(["AAPL", "NVDA"])
+    assert set(quotes) == {"AAPL", "NVDA"}
+    assert all(row["status"] == "valid" for row in quotes.values())
+
+
+def test_fresh_trusted_cache_fallback_is_eligible(tmp_path) -> None:
+    provider = make_provider(tmp_path, ticker_factory=lambda symbol: FailingTicker())
+    provider.cache = {
+        "AAPL": {
+            "price": 175.5,
+            "source": "yfinance",
+            "origin_source": "yfinance",
+            "as_of": NOW.isoformat(),
+            "cached_at": NOW.isoformat(),
+        }
+    }
+    quote = provider.get_price("AAPL")
     assert quote["price"] == 175.5
     assert quote["source"] == "cache"
+    assert quote["status"] == "valid"
 
 
-def test_market_context_returns_regime(tmp_path) -> None:
-    provider = make_provider(tmp_path)
-
-    with patch("northstar.data.market_data_provider.yf.Ticker", FakeTicker):
-        context = provider.get_market_context()
-
-    assert context["market_regime"] == "bull"
-    assert context["SPY_trend"] == "up"
-    assert isinstance(context["volatility"], float)
-
-
-def test_failure_does_not_crash_and_persists_mock_price(tmp_path) -> None:
-    provider = make_provider(tmp_path)
-
-    with patch(
-        "northstar.data.market_data_provider.yf.Ticker",
-        return_value=FailingTicker(),
-    ):
-        quote = provider.get_price("NVDA")
-        context = provider.get_market_context()
-        features = provider.get_technical_features("NVDA")
-
-    assert quote["price"] == 123.45
-    assert quote["source"] == "cache"
-    assert context["market_regime"] == "sideways"
-    assert features["trend"] == "flat"
-
-    with open(provider.cache_file, encoding="utf-8") as cache_handle:
-        cache = json.load(cache_handle)
-    assert cache["NVDA"]["price"] == 123.45
+def test_stale_cache_is_explicit_and_not_refreshed(tmp_path) -> None:
+    provider = make_provider(
+        tmp_path,
+        ticker_factory=lambda symbol: FailingTicker(),
+        cache_ttl=timedelta(minutes=15),
+    )
+    provider.cache = {
+        "AAPL": {
+            "price": 175.5,
+            "origin_source": "yfinance",
+            "as_of": (NOW - timedelta(days=1)).isoformat(),
+            "cached_at": (NOW - timedelta(hours=1)).isoformat(),
+        }
+    }
+    quote = provider.get_price("AAPL")
+    assert quote["status"] == "stale"
+    assert quote["is_stale"] is True
 
 
-def test_technical_features_return_expected_shape(tmp_path) -> None:
-    provider = make_provider(tmp_path)
+def test_untrusted_legacy_cache_is_rejected(tmp_path) -> None:
+    provider = make_provider(tmp_path, ticker_factory=lambda symbol: FailingTicker())
+    provider.cache = {"AAPL": {"price": 175.5, "timestamp": NOW.isoformat()}}
+    quote = provider.get_price("AAPL")
+    assert quote["price"] is None
+    assert quote["status"] == "error"
+    assert quote["error_code"] == "QUOTE_UNAVAILABLE"
 
-    with patch("northstar.data.market_data_provider.yf.Ticker", FakeTicker):
-        features = provider.get_technical_features("AAPL")
 
-    assert set(features) == {"momentum", "volatility", "trend"}
-    assert isinstance(features["momentum"], float)
-    assert isinstance(features["volatility"], float)
-    assert features["trend"] == "up"
+def test_total_failure_does_not_persist_mock_price(tmp_path) -> None:
+    cache_file = tmp_path / "price_cache.json"
+    provider = make_provider(tmp_path, ticker_factory=lambda symbol: FailingTicker())
+    quote = provider.get_price("NVDA")
+    assert quote["price"] is None
+    assert quote["source"] == "unavailable"
+    assert quote["status"] == "error"
+    assert quote["is_mock"] is False
+    assert not cache_file.exists()
+
+
+def test_demo_mode_is_explicitly_mock(tmp_path) -> None:
+    provider = make_provider(tmp_path, mode="demo", demo_prices={"NVDA": 42.0})
+    quote = provider.get_price("NVDA")
+    assert quote["price"] == 42.0
+    assert quote["source"] == "demo"
+    assert quote["status"] == "mock"
+    assert quote["is_mock"] is True
+
+
+def test_context_and_features_fail_closed(tmp_path) -> None:
+    provider = make_provider(tmp_path, ticker_factory=lambda symbol: FailingTicker())
+    assert provider.get_market_context()["status"] == "error"
+    features = provider.get_technical_features("NVDA")
+    assert features["status"] == "error"
+    assert features["momentum"] is None

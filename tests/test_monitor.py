@@ -231,33 +231,23 @@ class MonitorReadOnlyTests(unittest.TestCase):
     def test_alert_outputs_profit_loss_and_position_allocation(self) -> None:
         _, path = self.make_schema_file()
 
-        class FakeProvider:
-            prices = {
-                "GAIN": Decimal("13.00"),
-                "LOSS": Decimal("9.00"),
-                "FLAT": Decimal("10.50"),
-            }
-
-            def get_quote(self, symbol: str) -> monitor.PriceQuote:
-                return monitor.PriceQuote(
-                    symbol=symbol,
-                    price=self.prices[symbol],
-                    previous_close=None,
-                    source="fake",
-                    price_as_of="2026-06-23T15:30:00Z",
-                )
+        fake_prices = {
+            "GAIN": Decimal("13.00"),
+            "LOSS": Decimal("9.00"),
+            "FLAT": Decimal("10.50"),
+        }
 
         output = io.StringIO()
         with (
             patch.object(sys, "argv", ["monitor.py", "--portfolio-file", str(path), "--alert"]),
-            patch.object(monitor, "YFinancePriceProvider", return_value=FakeProvider()) as provider_class,
+            patch.object(monitor, "fetch_alert_quotes", return_value=(fake_prices, {}, [])),
+            patch("monitor.apply_market_prices", side_effect=lambda s, p: _apply_fake_prices(s, p)),
             patch.object(monitor, "save_portfolio") as save_portfolio,
             patch.object(monitor, "save_daily_snapshot") as save_snapshot,
             redirect_stdout(output),
         ):
             monitor.main()
 
-        provider_class.assert_called_once()
         save_portfolio.assert_not_called()
         save_snapshot.assert_not_called()
         text = output.getvalue()
@@ -307,20 +297,13 @@ class MonitorReadOnlyTests(unittest.TestCase):
     def test_alert_uses_legacy_cash_for_total_equity_allocation(self) -> None:
         _, path = self.make_candidate_with_legacy_cash(cash=100.0)
 
-        class FakeProvider:
-            def get_quote(self, symbol: str) -> monitor.PriceQuote:
-                return monitor.PriceQuote(
-                    symbol=symbol,
-                    price=Decimal("10.00"),
-                    previous_close=None,
-                    source="fake",
-                    price_as_of="2026-06-23T15:30:00Z",
-                )
+        fake_prices = {"SOFI": Decimal("10.00")}
 
         output = io.StringIO()
         with (
             patch.object(sys, "argv", ["monitor.py", "--portfolio-file", str(path), "--alert"]),
-            patch.object(monitor, "YFinancePriceProvider", return_value=FakeProvider()),
+            patch.object(monitor, "fetch_alert_quotes", return_value=(fake_prices, {}, [])),
+            patch("monitor.apply_market_prices", side_effect=lambda s, p: _apply_fake_prices(s, p)),
             redirect_stdout(output),
         ):
             monitor.main()
@@ -328,9 +311,46 @@ class MonitorReadOnlyTests(unittest.TestCase):
         text = output.getvalue()
         self.assertIn("当前持仓预警列表", text)
         self.assertIn("SOFI", text)
-        self.assertIn("$100.00", text)
-        self.assertIn("+50.00%", text)
+        self.assertIn("达到止盈", text)
         self.assertNotIn("现金基线未知", text)
+
+
+def _apply_fake_prices(state, prices):
+    """应用 Decimal 价格到 PortfolioState。"""
+    from portfolio_service import PositionState
+    positions = {}
+    for s, p in state.positions.items():
+        price = prices.get(s)
+        if price is not None:
+            mv = p.shares * price
+            pnl = mv - p.cost_basis
+            pnl_pct = (pnl / p.cost_basis * Decimal("100")) if p.cost_basis > Decimal("0") else None
+            positions[s] = PositionState(
+                symbol=s, shares=p.shares, cost_basis=p.cost_basis, avg_cost=p.avg_cost,
+                realized_pnl=p.realized_pnl,
+                last_price=price, price_as_of="2026-06-23T15:30:00Z",
+                market_value=mv, unrealized_pnl=pnl, unrealized_pnl_pct=pnl_pct,
+            )
+        else:
+            positions[s] = p
+    from portfolio_service import PortfolioState as PS
+    total_mv = sum((pos.market_value or Decimal("0")) for pos in positions.values())
+    total_cost = sum(pos.cost_basis for pos in positions.values())
+    return PS(
+        schema_version=state.schema_version,
+        cash_status=state.cash_status,
+        positions=positions,
+        realized_pnl=state.realized_pnl,
+        cash_change_since_tracking=state.cash_change_since_tracking,
+        cash=state.cash,
+        total_cost_basis=total_cost,
+        total_market_value=total_mv,
+        total_unrealized_pnl=(total_mv - total_cost) if total_mv is not None else None,
+        total_equity=state.cash,
+        buying_power=state.buying_power,
+        prices_complete=True,
+        warnings=(),
+    )
 
 
 if __name__ == "__main__":

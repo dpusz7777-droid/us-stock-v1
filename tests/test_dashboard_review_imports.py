@@ -89,15 +89,19 @@ class TestDashboardReviewImports(unittest.TestCase):
             if item in module_source:
                 self.fail(f"dashboard_review 不应依赖 {item}")
 
-    # ── G. dashboard 能正常导入 dashboard_review ──
+    # ── G. dashboard 同时保留复盘与持仓建议正式入口 ──
     def test_dashboard_calls_review_module(self):
-        """dashboard.py 中使用了 dashboard_review 的 render 函数"""
+        """首页不能因新增持仓 MVP 而丢失原建议复盘。"""
         import northstar.ui.dashboard
         source = inspect.getsource(northstar.ui.dashboard)
         self.assertIn("dashboard_review", source,
                        "dashboard.py 应导入 dashboard_review")
         self.assertIn("render_recommendation_review_section", source,
                        "dashboard.py 应调用 render_recommendation_review_section")
+        self.assertIn("_render_recommendation_review(st)", source,
+                       "dashboard.run 应渲染建议复盘")
+        self.assertIn("_render_holdings_decisions", source,
+                       "dashboard.py 应包含 _render_holdings_decisions（当前正式持仓入口）")
 
 
 class TestFunctionSignature(unittest.TestCase):

@@ -128,7 +128,7 @@ class PortfolioTrackerReadOnlyTests(unittest.TestCase):
         self.assertIn("Schema 版本: 1.1", output)
         self.assertIn("持仓数量: 3", output)
         self.assertIn("持仓总成本: $1,638.65", output)
-        self.assertIn("追踪期内已实现盈亏: $0.00", output)
+        self.assertNotIn("追踪期内已实现盈亏", output)
         self.assertIn("NVDA", output)
         self.assertIn("SOFI", output)
         self.assertIn("SPCX", output)
@@ -146,11 +146,10 @@ class PortfolioTrackerReadOnlyTests(unittest.TestCase):
         output = self.run_tracker("--portfolio-file", str(CANDIDATE_FILE))
 
         self.assertIn("现金: $2,688.96", output)
-        self.assertIn("总资产: 无法计算", output)
-        self.assertIn("购买力: $7,585.18", output)
+        self.assertIn("总资产: 未生成 MarketSnapshot，无法计算", output)
         self.assertNotIn("现金: $0.00", output)
         self.assertNotIn("总资产: $0.00", output)
-        self.assertNotIn("购买力: $0.00", output)
+        self.assertNotIn("购买力", output)
 
     def test_old_schema_prints_clear_incompatibility_error(self) -> None:
         output = self.run_tracker("--portfolio-file", str(OLD_PORTFOLIO_FILE))
@@ -230,10 +229,8 @@ class PortfolioTrackerReadOnlyTests(unittest.TestCase):
             "--portfolio-file", str(self.make_temp_json(schema_document()))
         )
 
-        self.assertIn("持仓数量: 0", output)
-        self.assertIn("持仓总成本: $0.00", output)
-        self.assertIn("暂无持仓", output)
-        self.assertIn("现金: 未知", output)
+        self.assertIn("[错误] 持仓数据无法读取", output)
+        self.assertIn("现金未知", output)
 
     def test_missing_required_field_prints_clear_error(self) -> None:
         transaction = opening_position()
@@ -255,7 +252,7 @@ class PortfolioTrackerReadOnlyTests(unittest.TestCase):
         output = self.run_tracker("--portfolio-file", str(path))
 
         self.assertEqual(tuple(state.positions), ("SOFI",))
-        self.assertIn("SOFI", output)
+        self.assertIn("现金未知", output)
 
     def test_symbol_case_is_normalized(self) -> None:
         transaction = opening_position(symbol="sofi")

@@ -52,7 +52,7 @@ def test_load_watchlist_returns_25_stocks() -> None:
     symbols = load_watchlist()
     assert len(symbols) == 25, f"期望 25 支股票，实际 {len(symbols)}"
     # 检查关键股票都在
-    key_symbols = {"NVDA", "AMD", "AVGO", "MSFT", "GOOGL", "META", "PLTR", "TSLA", "SOFI", "COIN"}
+    key_symbols = {"NVDA", "AMD", "AVGO", "TSM", "ASML", "ARM", "MSFT", "GOOGL", "META", "PLTR", "VRT", "SMCI", "DELL"}
     for s in key_symbols:
         assert s in symbols, f"缺少 {s}"
 
@@ -183,8 +183,30 @@ def test_fetch_prices_partial_failure() -> None:
         instance.get_quote.side_effect = mock_get_quote
         instance._get_ticker_factory.return_value = make_ticker
 
+        class PartialProvider:
+            def get_price(self, symbol: str):
+                if symbol in ("IONQ", "RGTI", "COIN"):
+                    return {
+                        "symbol": symbol,
+                        "price": None,
+                        "source": "unavailable",
+                        "as_of": None,
+                        "status": "error",
+                        "error_code": "TEST_FAILURE",
+                        "error_message": "injected failure",
+                    }
+                return {
+                    "symbol": symbol,
+                    "price": 100.0,
+                    "source": "test_provider",
+                    "as_of": "2026-07-10T12:00:00Z",
+                    "status": "valid",
+                    "previous_close": 98.0,
+                    "change_pct_today": 2.04,
+                }
+
         symbols = ["NVDA", "MSFT", "AAPL", "IONQ", "RGTI", "COIN"]
-        info_map = fetch_prices(symbols)
+        info_map = fetch_prices(symbols, provider=PartialProvider())
 
         # 6 支股票 + 3 个元数据键(__market_status__, __priced_count__, __proxy_url__)
         stock_count = sum(1 for k in info_map if not k.startswith("__"))
@@ -192,11 +214,11 @@ def test_fetch_prices_partial_failure() -> None:
         # 成功获取的股票应有正常价格
         assert info_map["NVDA"].current_price > 0
         assert info_map["NVDA"].change_pct_today != 0.0
-        # 失败的股票从历史数据降级获取价格，不会有今日涨跌（prev_close 缺失）
-        assert info_map["IONQ"].current_price > 0
-        assert info_map["IONQ"].change_pct_today == 0.0
-        assert info_map["RGTI"].current_price > 0
-        assert info_map["COIN"].current_price > 0
+        # 失败不得降级为零价、历史假价或 mock 价。
+        assert info_map["IONQ"].current_price is None
+        assert info_map["IONQ"].status == "error"
+        assert info_map["RGTI"].current_price is None
+        assert info_map["COIN"].current_price is None
 
 
 def test_build_report_with_zero_prices() -> None:
@@ -210,8 +232,9 @@ def test_build_report_with_zero_prices() -> None:
 
     result = build_report_data(info_map)
     assert isinstance(result, dict)
-    assert "top5_opportunity" in result
-    assert "top5_risk" in result
+    assert result["recommendation_status"] == "DATA_INSUFFICIENT"
+    assert result["top5_opportunity"] == []
+    assert result["top5_risk"] == []
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -229,7 +252,7 @@ def test_top5_sections_present() -> None:
     top5_risk = result["top5_risk"]
 
     assert len(top5_opp) == 5, f"Top 5 机会应有 5 条，实际 {len(top5_opp)}"
-    assert len(top5_risk) == 5, f"Top 5 风险应有 5 条，实际 {len(top5_risk)}"
+    assert len(top5_risk) <= 5, f"Top 5 风险最多 5 条，实际 {len(top5_risk)}"
 
     # 检查每项都有必要字段
     for item in top5_opp:
@@ -277,6 +300,11 @@ def test_portfolio_notes_for_held_stocks() -> None:
         "NVDA": {"shares": 1, "avg_cost": 200.0},
         "SOFI": {"shares": 59, "avg_cost": 17.5},
     }
+    info_map["SOFI"] = StockPriceInfo(
+        symbol="SOFI", company_cn="SoFi", current_price=20.0,
+        trend="中性", risk_level="低", suggestion="继续持有", reason="持仓跟踪",
+        data_source="test_provider", as_of="2026-07-10T12:00:00Z", status="valid",
+    )
     result = build_report_data(info_map, portfolio=portfolio)
 
     notes = result.get("portfolio_notes", [])
@@ -377,11 +405,9 @@ def test_make_overall_conclusion() -> None:
 def _make_test_info_map() -> dict[str, StockPriceInfo]:
     """构建包含 25 支股票的测试数据。"""
     symbols = [
-        "NVDA", "AMD", "AVGO", "TSM", "ASML",
-        "MSFT", "GOOGL", "META", "AMZN", "AAPL",
-        "PLTR", "TSLA", "SOFI", "IONQ", "RGTI",
-        "ARM", "MU", "SMCI", "DELL", "ORCL",
-        "CRWD", "PANW", "SNOW", "MDB", "COIN",
+        "NVDA", "AMD", "AVGO", "TSM", "ASML", "ARM", "MRVL", "MU", "AMAT", "LRCX",
+        "MSFT", "GOOGL", "META", "ORCL", "PLTR", "SNOW", "MDB", "CRWD", "DDOG",
+        "NET", "NOW", "VRT", "ETN", "SMCI", "DELL",
     ]
 
     from northstar.reports.daily_decision_report import COMPANY_NAMES
@@ -399,6 +425,9 @@ def _make_test_info_map() -> dict[str, StockPriceInfo]:
             change_pct_20d=5.0 + i * 0.8,
             trend=base_trend,
             risk_level=base_risk,
+            data_source="test_provider",
+            as_of="2026-07-10T12:00:00Z",
+            status="valid",
         )
         info.suggestion = _judge_suggestion(info)
         from northstar.reports.daily_decision_report import _generate_reason

@@ -121,65 +121,32 @@ def test_get_connectivity_status_returns_dict() -> None:
 # Test 4: 行情获取失败时会返回明确状态，而不是抛异常
 # ═══════════════════════════════════════════════════════════════
 def test_fetch_prices_returns_status_metadata() -> None:
-    """fetch_prices 返回的 dict 应包含 __market_status__ 等元数据。"""
-    # Mock 在 price_provider 模块上，因为函数内部 from price_provider import
-    with patch("price_provider.YFinancePriceProvider") as mock_cls:
-        instance = mock_cls.return_value
-        from price_provider import PriceNotFoundError
-        instance.get_quote.side_effect = PriceNotFoundError("mock fail")
+    """fetch_prices embeds one immutable snapshot with explicit failures."""
+    class FailedProvider:
+        def get_price(self, symbol: str):
+            return {"symbol": symbol, "price": None, "source": "unavailable", "status": "error"}
 
-        result = fetch_prices(["NVDA", "MSFT"])
-
-        # 应包含元数据键
-        assert "__market_status__" in result
-        assert "__priced_count__" in result
-        assert "__proxy_url__" in result
-        # 全部失败 → 不可用
-        assert result["__market_status__"] == "不可用"
-        assert result["__priced_count__"] == 0.0
+    result = fetch_prices(["NVDA", "MSFT"], provider=FailedProvider())
+    snapshot = result["__snapshot__"]
+    assert snapshot.market_status == "UNAVAILABLE"
+    assert snapshot.valid_symbols == ()
+    assert result["NVDA"].current_price is None
 
 
 def test_fetch_prices_partial_success_status() -> None:
-    """部分成功时状态应能正确判定。"""
-    import pandas as pd
-    dates = pd.date_range("2026-07-01", periods=5, freq="D")
-    real_df = pd.DataFrame({
-        "Close": [95.0, 96.0, 97.0, 98.0, 100.0],
-        "Open": [94.0, 95.0, 96.0, 97.0, 99.0],
-        "High": [96.0, 97.0, 98.0, 99.0, 101.0],
-        "Low": [93.0, 94.0, 95.0, 96.0, 98.0],
-    }, index=dates)
+    """Partial success is DEGRADED and failed symbols stay ineligible."""
+    class PartialProvider:
+        def get_price(self, symbol: str):
+            if symbol in {"MSFT", "GOOGL"}:
+                raise RuntimeError("injected failure")
+            return {
+                "symbol": symbol, "price": 100.0, "source": "test_provider",
+                "as_of": "2026-07-10T12:00:00Z", "status": "valid",
+            }
 
-    def mock_history(period="1mo", interval="1d"):
-        return real_df
-
-    with patch("price_provider.YFinancePriceProvider") as mock_cls:
-        instance = mock_cls.return_value
-        from price_provider import PriceNotFoundError
-
-        call_count = [0]
-        def mock_get_quote(symbol: str):
-            call_count[0] += 1
-            if call_count[0] % 2 == 0:
-                raise PriceNotFoundError("mock fail")
-            mock_q = MagicMock()
-            mock_q.price = 100.0
-            mock_q.previous_close = 98.0
-            return mock_q
-        instance.get_quote.side_effect = mock_get_quote
-
-        def make_ticker(sym: str):
-            t = MagicMock()
-            t.history.side_effect = mock_history
-            return t
-        instance._get_ticker_factory.return_value = make_ticker
-
-        symbols = ["NVDA", "MSFT", "AAPL", "GOOGL"]
-        result = fetch_prices(symbols)
-
-        assert "__market_status__" in result
-        # 4 支股票，2 支成功，pct=0.5 >= 0.3 → 部分可用或正常
-        assert result["__market_status__"] in ("部分可用", "正常")
+    result = fetch_prices(["NVDA", "MSFT", "AAPL", "GOOGL"], provider=PartialProvider())
+    assert result["__snapshot__"].market_status == "DEGRADED"
+    assert result["MSFT"].current_price is None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -188,21 +155,15 @@ def test_fetch_prices_partial_success_status() -> None:
 def test_report_contains_market_status() -> None:
     """build_report_data 生成的数据应包含行情源状态。"""
     info_map = _make_test_info_map()
-    # 添加元数据
-    info_map["__market_status__"] = "正常"
-    info_map["__priced_count__"] = 25.0
-    info_map["__proxy_url__"] = "127.0.0.1:7890"
-
     result = build_report_data(info_map, portfolio={})
 
     assert "overview" in result
     overview = result["overview"]
     assert "行情源状态" in overview
-    assert "成功获取价格数量" in overview
-    assert "当前使用代理" in overview
-    # 行情源状态应该包含图标和中文
-    assert "正常" in str(overview["行情源状态"])
-    assert "25/25" in str(overview["成功获取价格数量"])
+    assert "有效价格数量" in overview
+    assert overview["行情源状态"] == "NORMAL"
+    assert overview["有效价格数量"] == "25/25"
+    assert result["recommendation_status"] == "OK"
 
 
 def test_report_market_status_when_all_empty() -> None:
@@ -211,15 +172,12 @@ def test_report_market_status_when_all_empty() -> None:
     for sym in info_map:
         info_map[sym].current_price = 0.0
         info_map[sym].change_pct_today = 0.0
-    info_map["__market_status__"] = "不可用"
-    info_map["__priced_count__"] = 0.0
-    info_map["__proxy_url__"] = "直连"
-
     result = build_report_data(info_map, portfolio={})
 
     overview = result["overview"]
-    assert "不可用" in str(overview["行情源状态"])
-    assert "0/25" in str(overview["成功获取价格数量"])
+    assert overview["行情源状态"] == "UNAVAILABLE"
+    assert overview["有效价格数量"] == "0/25"
+    assert result["top5_opportunity"] == []
 
 
 def test_warning_when_all_prices_empty() -> None:
@@ -228,17 +186,14 @@ def test_warning_when_all_prices_empty() -> None:
     for sym in info_map:
         info_map[sym].current_price = 0.0
         info_map[sym].change_pct_today = 0.0
-    temp_map = dict(info_map)
-    temp_map["__market_status__"] = "不可用"
-    temp_map["__priced_count__"] = 0.0
-    temp_map["__proxy_url__"] = "直连"
-
-    result = build_report_data(temp_map, portfolio={"NVDA": {"shares": 1, "avg_cost": 200.0}})
+    result = build_report_data(info_map, portfolio={"NVDA": {"shares": 1, "avg_cost": 200.0}})
 
     overview = result["overview"]
     market_status = str(overview.get("行情源状态", ""))
-    assert "不可用" in market_status, "行情源状态应标明不可用"
-    assert overview.get("成功获取价格数量") == "0/25"
+    assert market_status == "UNAVAILABLE"
+    assert overview.get("有效价格数量") == "0/25"
+    assert result["recommendation_status"] == "DATA_INSUFFICIENT"
+    assert result["portfolio_valuation"]["valuation_status"] == "error"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -284,6 +239,9 @@ def _make_test_info_map() -> dict[str, StockPriceInfo]:
             change_pct_20d=5.0 + i * 0.8,
             trend="中性",
             risk_level="低",
+            data_source="test_provider",
+            as_of="2026-07-10T12:00:00Z",
+            status="valid",
         )
         info.suggestion = "继续持有"
         from northstar.reports.daily_decision_report import _generate_reason, _compute_score

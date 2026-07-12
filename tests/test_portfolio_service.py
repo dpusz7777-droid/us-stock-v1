@@ -326,11 +326,13 @@ class PortfolioServiceTests(unittest.TestCase):
             {
                 "SOFI": {
                     "price": D("18.25"),
-                    "price_as_of": "2026-06-23T14:30:00Z",
+                    "price_as_of": "2026-07-10T12:00:00Z",
+                    "source": "test_provider",
                 },
                 "SPCX": {
                     "price": D("182.875"),
-                    "price_as_of": "2026-06-23T14:30:00Z",
+                    "price_as_of": "2026-07-10T12:00:00Z",
+                    "source": "test_provider",
                 },
             },
         )
@@ -338,8 +340,8 @@ class PortfolioServiceTests(unittest.TestCase):
         self.assertEqual(priced.positions["SOFI"].market_value, D("1076.75"))
         self.assertEqual(priced.positions["SOFI"].unrealized_pnl, D("44.25"))
         self.assertEqual(priced.positions["SPCX"].market_value, D("365.750"))
-        self.assertEqual(priced.total_market_value, D("1442.500"))
-        self.assertEqual(priced.total_unrealized_pnl, D("6.000"))
+        self.assertIsNone(priced.total_market_value)
+        self.assertIsNone(priced.total_unrealized_pnl)
         self.assertIsNone(priced.total_equity)
         self.assertIsNone(priced.cash)
         self.assertIsNone(priced.buying_power)
@@ -353,7 +355,11 @@ class PortfolioServiceTests(unittest.TestCase):
             )
         )
 
-        priced = apply_market_prices(state, {"SOFI": D("12")})
+        priced = apply_market_prices(state, {"SOFI": {
+            "price": D("12"),
+            "price_as_of": "2026-07-10T12:00:00Z",
+            "source": "test_provider",
+        }})
 
         self.assertEqual(priced.cash, D("1000"))
         self.assertEqual(priced.buying_power, D("850"))
